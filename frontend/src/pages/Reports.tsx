@@ -7,6 +7,7 @@ import { jsPDF } from 'jspdf';
 import 'jspdf-autotable';
 import html2canvas from 'html2canvas';
 import FileDownloadIcon from '@mui/icons-material/FileDownload';
+import { useNavigate } from 'react-router-dom';
 
 // Define chart colors
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d', '#ffc658', '#8dd1e1', '#a4de6c', '#d0ed57'];
@@ -25,40 +26,85 @@ declare module 'jspdf' {
   }
 }
 
+// Add a utility function for formatting currency
+const formatCurrency = (value: number): string => {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  }).format(value);
+};
+
 const Reports: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [spendingData, setSpendingData] = useState<any>(null);
   const [incomeExpenseData, setIncomeExpenseData] = useState<any>(null);
   const [netWorthData, setNetWorthData] = useState<any>(null);
-  const [timeRange, setTimeRange] = useState<number>(6);
+  const [timeRange, setTimeRange] = useState<string>("6");
   const [exportLoading, setExportLoading] = useState<boolean>(false);
   
   const reportsRef = useRef<HTMLDivElement>(null);
+  const navigate = useNavigate();
 
   useEffect(() => {
     fetchReportData();
   }, [timeRange]);
 
-  const fetchReportData = async () => {
+  const fetchReportData = async (startDate?: Date, endDate?: Date) => {
     setLoading(true);
     setError(null);
     
     try {
       const token = localStorage.getItem('token');
       
+      // Use the provided dates or calculate based on timeRange
+      let months = timeRange;
+      if (!startDate && !endDate) {
+        // If no dates provided, use the timeRange value
+        if (timeRange !== 'this-month' && timeRange !== 'last-month') {
+          months = timeRange; // Use the numeric string value
+        } else {
+          // For 'this-month' and 'last-month', default to 1 month
+          months = "1";
+        }
+      }
+      
+      // Construct the API URL with appropriate parameters
+      let url = `${API_URL}/reports/spending-by-category`;
+      if (startDate && endDate) {
+        // If dates are provided, use them as query parameters
+        url += `?startDate=${startDate.toISOString().split('T')[0]}&endDate=${endDate.toISOString().split('T')[0]}`;
+      } else {
+        // Otherwise use months parameter
+        url += `?months=${months}`;
+      }
+      
       // Fetch spending by category data
-      const spendingResponse = await axios.get(`${API_URL}/reports/spending-by-category?months=${timeRange}`, {
+      const spendingResponse = await axios.get(url, {
         headers: { Authorization: `Bearer ${token}` }
       });
       
       // Fetch income vs expenses data
-      const incomeExpenseResponse = await axios.get(`${API_URL}/reports/income-vs-expenses?months=${timeRange}`, {
+      let incomeExpenseUrl = `${API_URL}/reports/income-vs-expenses`;
+      if (startDate && endDate) {
+        incomeExpenseUrl += `?startDate=${startDate.toISOString().split('T')[0]}&endDate=${endDate.toISOString().split('T')[0]}`;
+      } else {
+        incomeExpenseUrl += `?months=${months}`;
+      }
+      const incomeExpenseResponse = await axios.get(incomeExpenseUrl, {
         headers: { Authorization: `Bearer ${token}` }
       });
       
       // Fetch net worth trend data
-      const netWorthResponse = await axios.get(`${API_URL}/reports/net-worth-trend?months=${timeRange}`, {
+      let netWorthUrl = `${API_URL}/reports/net-worth-trend`;
+      if (startDate && endDate) {
+        netWorthUrl += `?startDate=${startDate.toISOString().split('T')[0]}&endDate=${endDate.toISOString().split('T')[0]}`;
+      } else {
+        netWorthUrl += `?months=${months}`;
+      }
+      const netWorthResponse = await axios.get(netWorthUrl, {
         headers: { Authorization: `Bearer ${token}` }
       });
       
@@ -122,24 +168,74 @@ const Reports: React.FC = () => {
 
   const formatIncomeExpenseData = (data: any) => {
     // Format data for the income vs expenses chart
-    return Object.entries(data).map(([month, values]: [string, any]) => ({
+    const formattedData = Object.entries(data).map(([month, values]: [string, any]) => ({
       name: month,
       Income: values.INCOME || 0,
       Expenses: values.EXPENSE || 0,
       Savings: (values.INCOME || 0) - (values.EXPENSE || 0)
     }));
+    
+    // If timeRange is 'this-month' or 'last-month', ensure we only show one month
+    if (timeRange === 'this-month' || timeRange === 'last-month') {
+      // For 'this-month' or 'last-month', we should only have one data point
+      // If we have more, take only the most recent one (last in the array)
+      if (formattedData.length > 1) {
+        return [formattedData[formattedData.length - 1]];
+      }
+    }
+    
+    return formattedData;
   };
 
   const formatNetWorthData = (data: any) => {
     // Format data for the net worth trend chart
-    return Object.entries(data).map(([month, value]: [string, any]) => ({
+    const formattedData = Object.entries(data).map(([month, value]: [string, any]) => ({
       name: month,
       'Net Worth': value
     }));
+    
+    // If timeRange is 'this-month' or 'last-month', ensure we only show one month
+    if (timeRange === 'this-month' || timeRange === 'last-month') {
+      if (formattedData.length > 1) {
+        return [formattedData[formattedData.length - 1]];
+      }
+    }
+    
+    return formattedData;
   };
 
-  const handleTimeRangeChange = (event: SelectChangeEvent<number>) => {
-    setTimeRange(event.target.value as number);
+  const handleTimeRangeChange = (event: SelectChangeEvent) => {
+    const value = event.target.value;
+    setTimeRange(value);
+    
+    const now = new Date();
+    let startDate: Date;
+    let endDate: Date = now;
+    
+    if (value === 'this-month') {
+      // First day of current month
+      startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+      // Last day of current month
+      endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+      fetchReportData(startDate, endDate);
+      return;
+    } else if (value === 'last-month') {
+      // First day of previous month
+      startDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      // Last day of previous month
+      endDate = new Date(now.getFullYear(), now.getMonth(), 0);
+      fetchReportData(startDate, endDate);
+      return;
+    } else {
+      // For numeric values (3, 6, 12 months)
+      const months = parseInt(value, 10);
+      startDate = new Date(now);
+      startDate.setMonth(startDate.getMonth() - months);
+      
+      // For 3, 6, 12 months, use today as the end date
+      fetchReportData(startDate, now);
+      return;
+    }
   };
 
   const handleExportPDF = async () => {
@@ -246,6 +342,66 @@ const Reports: React.FC = () => {
     }
   };
 
+  // Add a function to format the date range display
+  const getTimeRangeDisplay = (): string => {
+    const now = new Date();
+    
+    if (timeRange === 'this-month') {
+      const monthName = now.toLocaleString('default', { month: 'long' });
+      const year = now.getFullYear();
+      return `${monthName} ${year}`;
+    } else if (timeRange === 'last-month') {
+      const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const monthName = lastMonth.toLocaleString('default', { month: 'long' });
+      const year = lastMonth.getFullYear();
+      return `${monthName} ${year}`;
+    } else {
+      // For numeric values (3, 6, 12 months)
+      const months = parseInt(timeRange, 10);
+      const startDate = new Date(now);
+      startDate.setMonth(startDate.getMonth() - months);
+      
+      const startMonth = startDate.toLocaleString('default', { month: 'short' });
+      const startYear = startDate.getFullYear();
+      const endMonth = now.toLocaleString('default', { month: 'short' });
+      const endYear = now.getFullYear();
+      
+      if (startYear === endYear) {
+        return `${startMonth} - ${endMonth} ${endYear}`;
+      } else {
+        return `${startMonth} ${startYear} - ${endMonth} ${endYear}`;
+      }
+    }
+  };
+
+  // Add a handler for category click
+  const handleCategoryClick = (category: string) => {
+    // Get date range based on current timeRange
+    const now = new Date();
+    let startDate: string;
+    let endDate: string;
+    
+    if (timeRange === 'this-month') {
+      // First day of current month
+      startDate = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+      // Last day of current month
+      endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
+    } else if (timeRange === 'last-month') {
+      // First day of previous month
+      startDate = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().split('T')[0];
+      // Last day of previous month
+      endDate = new Date(now.getFullYear(), now.getMonth(), 0).toISOString().split('T')[0];
+    } else {
+      // For numeric values (3, 6, 12 months)
+      const months = parseInt(timeRange, 10);
+      startDate = new Date(now.getFullYear(), now.getMonth() - months, 1).toISOString().split('T')[0];
+      endDate = now.toISOString().split('T')[0];
+    }
+    
+    // Navigate to transactions page with filters
+    navigate(`/transactions?startDate=${startDate}&endDate=${endDate}&category=${encodeURIComponent(category)}`);
+  };
+
   if (loading) {
     return (
       <Container maxWidth="lg" sx={{ py: 4, display: 'flex', justifyContent: 'center' }}>
@@ -257,24 +413,31 @@ const Reports: React.FC = () => {
   return (
     <Container maxWidth="lg" sx={{ py: 4 }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
-        <Typography variant="h4" component="h1" gutterBottom fontWeight="bold">
-          Financial Reports
-        </Typography>
+        <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 2 }}>
+          <Typography variant="h4" component="h1" fontWeight="bold">
+            Financial Reports
+          </Typography>
+          <Typography variant="subtitle1" color="text.secondary">
+            {getTimeRangeDisplay()}
+          </Typography>
+        </Box>
         
         <Box sx={{ display: 'flex', gap: 2 }}>
-          <FormControl sx={{ minWidth: 120 }}>
-            <InputLabel id="time-range-label">Time Range</InputLabel>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            <Typography variant="body1">Time Range:</Typography>
             <Select
-              labelId="time-range-label"
               value={timeRange}
-              label="Time Range"
               onChange={handleTimeRangeChange}
+              size="small"
+              sx={{ minWidth: 150 }}
             >
-              <MenuItem value={3}>3 Months</MenuItem>
-              <MenuItem value={6}>6 Months</MenuItem>
-              <MenuItem value={12}>12 Months</MenuItem>
+              <MenuItem value="this-month">This Month</MenuItem>
+              <MenuItem value="last-month">Last Month</MenuItem>
+              <MenuItem value="3">3 Months</MenuItem>
+              <MenuItem value="6">6 Months</MenuItem>
+              <MenuItem value="12">12 Months</MenuItem>
             </Select>
-          </FormControl>
+          </Box>
           
           <Button 
             variant="contained" 
@@ -314,13 +477,24 @@ const Reports: React.FC = () => {
                         paddingAngle={2}
                         fill="#8884d8"
                         dataKey="value"
+                        onClick={(data) => handleCategoryClick(data.name)}
+                        cursor="pointer"
                       >
                         {spendingData.map((entry: any, index: number) => (
                           <Cell key={`cell-${index}`} fill={entry.color} />
                         ))}
                       </Pie>
-                      <Tooltip formatter={(value) => `$${value}`} />
-                      <Legend layout="vertical" verticalAlign="middle" align="right" />
+                      <Tooltip 
+                        formatter={(value) => formatCurrency(value as number)} 
+                        labelFormatter={(name) => `${name}`}
+                      />
+                      <Legend 
+                        layout="vertical" 
+                        verticalAlign="middle" 
+                        align="right"
+                        onClick={(data) => handleCategoryClick(data.value)}
+                        formatter={(value) => <span style={{ cursor: 'pointer' }}>{value}</span>}
+                      />
                     </PieChart>
                   </ResponsiveContainer>
                 </Box>
@@ -349,7 +523,10 @@ const Reports: React.FC = () => {
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis dataKey="name" />
                       <YAxis />
-                      <Tooltip formatter={(value) => `$${value}`} />
+                      <Tooltip 
+                        formatter={(value) => formatCurrency(value as number)} 
+                        labelFormatter={(name) => `${name}`}
+                      />
                       <Legend verticalAlign="top" height={36} />
                       <Bar dataKey="Income" fill="#00C49F" />
                       <Bar dataKey="Expenses" fill="#FF8042" />
@@ -382,7 +559,10 @@ const Reports: React.FC = () => {
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis dataKey="name" />
                       <YAxis />
-                      <Tooltip formatter={(value) => `$${value}`} />
+                      <Tooltip 
+                        formatter={(value) => formatCurrency(value as number)} 
+                        labelFormatter={(name) => `${name}`}
+                      />
                       <Legend verticalAlign="top" height={36} />
                       <Line type="monotone" dataKey="Net Worth" stroke="#8884d8" strokeWidth={2} activeDot={{ r: 8 }} />
                     </LineChart>

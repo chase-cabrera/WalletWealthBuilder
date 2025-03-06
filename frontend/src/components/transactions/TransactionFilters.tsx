@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Box,
   Grid,
@@ -16,13 +16,14 @@ import {
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
-import { TransactionQuery } from '../../services/transactionService';
+import { TransactionQuery, getCategories } from '../../services/transactionService';
 import { Account } from '../../services/accountService';
 import { format, isValid } from 'date-fns';
 
 interface TransactionFiltersProps {
   accounts: Account[];
   onFilter: (filters: TransactionQuery) => void;
+  initialFilters?: TransactionQuery;
 }
 
 const CATEGORIES = [
@@ -44,18 +45,50 @@ const CATEGORIES = [
 const TransactionFilters: React.FC<TransactionFiltersProps> = ({
   accounts,
   onFilter,
+  initialFilters = {}
 }) => {
-  const [startDate, setStartDate] = useState<Date | null>(null);
-  const [endDate, setEndDate] = useState<Date | null>(null);
-  const [type, setType] = useState<string>('');
-  const [category, setCategory] = useState<string[]>([]);
-  const [accountId, setAccountId] = useState<number | ''>('');
-  const [minAmount, setMinAmount] = useState<string>('');
-  const [maxAmount, setMaxAmount] = useState<string>('');
+  const [startDate, setStartDate] = useState<Date | null>(
+    initialFilters.startDate ? new Date(initialFilters.startDate) : null
+  );
+  const [endDate, setEndDate] = useState<Date | null>(
+    initialFilters.endDate ? new Date(initialFilters.endDate) : null
+  );
+  const [minAmount, setMinAmount] = useState<string>(initialFilters.minAmount?.toString() || '');
+  const [maxAmount, setMaxAmount] = useState<string>(initialFilters.maxAmount?.toString() || '');
+  const [category, setCategory] = useState<string>(initialFilters.category || '');
+  const [accountId, setAccountId] = useState<number | ''>(
+    initialFilters.accountId || ''
+  );
+  const [type, setType] = useState<string>(initialFilters.type || '');
   const [search, setSearch] = useState<string>('');
   const [sortBy, setSortBy] = useState<string>('date');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [activeFilters, setActiveFilters] = useState<string[]>([]);
+  const [categories, setCategories] = useState<string[]>([]);
+  const [categoriesLoading, setCategoriesLoading] = useState<boolean>(false);
+
+  useEffect(() => {
+    const fetchCategories = async () => {
+      setCategoriesLoading(true);
+      try {
+        const fetchedCategories = await getCategories();
+        
+        if (Array.isArray(fetchedCategories) && fetchedCategories.length > 0) {
+          setCategories(fetchedCategories);
+        } else {
+          console.warn('No categories returned from API, using static list');
+          setCategories(CATEGORIES);
+        }
+      } catch (error) {
+        console.error('Failed to fetch categories:', error);
+        setCategories(CATEGORIES);
+      } finally {
+        setCategoriesLoading(false);
+      }
+    };
+
+    fetchCategories();
+  }, []);
 
   const applyFilters = () => {
     const filters: TransactionQuery = {};
@@ -76,17 +109,14 @@ const TransactionFilters: React.FC<TransactionFiltersProps> = ({
       newActiveFilters.push(`Type: ${type}`);
     }
 
-    if (category.length === 1) {
-      filters.category = category[0];
-      newActiveFilters.push(`Category: ${category[0]}`);
-    } else if (category.length > 1) {
-      filters.category = category[0];
-      newActiveFilters.push(`Categories: ${category.join(', ')}`);
+    if (category) {
+      filters.category = category;
+      newActiveFilters.push(`Category: ${category}`);
     }
 
-    if (accountId !== '') {
+    if (accountId) {
       filters.accountId = Number(accountId);
-      const accountName = accounts.find(a => a.id === accountId)?.name;
+      const accountName = accounts.find(a => a.id === Number(accountId))?.name;
       if (accountName) {
         newActiveFilters.push(`Account: ${accountName}`);
       }
@@ -122,7 +152,7 @@ const TransactionFilters: React.FC<TransactionFiltersProps> = ({
     setStartDate(null);
     setEndDate(null);
     setType('');
-    setCategory([]);
+    setCategory('');
     setAccountId('');
     setMinAmount('');
     setMaxAmount('');
@@ -141,10 +171,8 @@ const TransactionFilters: React.FC<TransactionFiltersProps> = ({
       setStartDate(null);
     } else if (filter.startsWith('Before')) {
       setEndDate(null);
-    } else if (filter === 'Income' || filter === 'Expense') {
-      setType('');
     } else if (filter.startsWith('Categories') || filter.startsWith('Category')) {
-      setCategory([]);
+      setCategory('');
     } else if (filter.startsWith('Account')) {
       setAccountId('');
     } else if (filter.startsWith('Min')) {
@@ -207,19 +235,13 @@ const TransactionFilters: React.FC<TransactionFiltersProps> = ({
             <InputLabel id="category-label">Categories</InputLabel>
             <Select
               labelId="category-label"
-              multiple
               value={category}
-              onChange={(e) => setCategory(typeof e.target.value === 'string' ? e.target.value.split(',') : e.target.value)}
+              onChange={(e) => setCategory(e.target.value)}
               input={<OutlinedInput label="Categories" />}
-              renderValue={(selected) => (
-                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                  {selected.map((value) => (
-                    <Chip key={value} label={value} size="small" />
-                  ))}
-                </Box>
-              )}
+              disabled={categoriesLoading}
             >
-              {CATEGORIES.map((cat) => (
+              <MenuItem value="">All Categories</MenuItem>
+              {categories.map((cat) => (
                 <MenuItem key={cat} value={cat}>
                   {cat}
                 </MenuItem>
@@ -233,7 +255,7 @@ const TransactionFilters: React.FC<TransactionFiltersProps> = ({
             select
             label="Account"
             value={accountId}
-            onChange={(e) => setAccountId(e.target.value === '' ? '' : Number(e.target.value))}
+            onChange={(e) => setAccountId(e.target.value as number | '')}
             fullWidth
             variant="outlined"
             size="small"

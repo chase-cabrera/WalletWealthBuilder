@@ -302,4 +302,18 @@ export class TransactionsService {
     
     return { success, failed };
   }
+
+  async getUniqueCategories(userId: number): Promise<string[]> {
+    const categories = await this.transactionRepository
+      .createQueryBuilder('transaction')
+      .select('DISTINCT transaction.category', 'category')
+      .where('transaction.userId = :userId', { userId })
+      .getRawMany();
+    
+    // Extract just the category names and filter out any null/empty values
+    return categories
+      .map(c => c.category)
+      .filter(c => c)
+      .sort(); // Sort alphabetically
+  }
 } 

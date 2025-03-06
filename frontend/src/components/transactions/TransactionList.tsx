@@ -57,6 +57,7 @@ interface TransactionRowProps {
   getAmountIcon: (transaction: Transaction) => JSX.Element;
   formatCurrency: (amount: number) => string;
   getCategoryDisplayName: (transaction: Transaction) => string;
+  hideActionDropdown?: boolean;
 }
 
 interface TransactionListProps {
@@ -65,6 +66,7 @@ interface TransactionListProps {
   onDelete: (id: number) => void;
   onBatchUpdate?: (ids: number[], updates: Partial<Transaction>) => void;
   accounts: Record<number, string>;
+  hideActionDropdown?: boolean;
 }
 
 const CATEGORIES = [
@@ -98,7 +100,8 @@ const TransactionRow = React.memo(({
   getAmountColor,
   getAmountIcon,
   formatCurrency,
-  getCategoryDisplayName
+  getCategoryDisplayName,
+  hideActionDropdown = false
 }: TransactionRowProps) => {
   return (
     <>
@@ -142,16 +145,18 @@ const TransactionRow = React.memo(({
             : 'No Account'}
         </TableCell>
         <TableCell align="right">
-          <IconButton
-            aria-label="expand row"
-            size="small"
-            onClick={(e) => {
-              e.stopPropagation();
-              handleRowExpand(transaction.id);
-            }}
-          >
-            {isExpanded ? <ExpandLessIcon /> : <ExpandMoreIcon />}
-          </IconButton>
+          {!hideActionDropdown && (
+            <IconButton
+              aria-label="expand row"
+              size="small"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleRowExpand(transaction.id);
+              }}
+            >
+              {isExpanded ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+            </IconButton>
+          )}
           <IconButton
             aria-label="transaction menu"
             size="small"
@@ -220,6 +225,7 @@ const TransactionList: React.FC<TransactionListProps> = ({
   onDelete,
   onBatchUpdate,
   accounts,
+  hideActionDropdown = false,
 }) => {
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
@@ -229,8 +235,6 @@ const TransactionList: React.FC<TransactionListProps> = ({
   const [accountMenuAnchorEl, setAccountMenuAnchorEl] = useState<null | HTMLElement>(null);
   const [expandedRows, setExpandedRows] = useState<Record<number, boolean>>({});
   const theme = useTheme();
-
-  console.log('Transactions received by component:', transactions.length);
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-US', {
@@ -387,16 +391,6 @@ const TransactionList: React.FC<TransactionListProps> = ({
     // Only return true if it's a savings transaction AND it's negative
     const result = (descriptionMatch || categoryMatch) && transaction.amount < 0;
     
-    // Debug log
-    console.log('Transaction:', {
-      id: transaction.id,
-      description: transaction.description,
-      category: transaction.category,
-      amount: transaction.amount,
-      descriptionMatch,
-      categoryMatch,
-      shouldBePositive: result
-    });
     
     return result;
   };
@@ -581,6 +575,7 @@ const TransactionList: React.FC<TransactionListProps> = ({
                   getAmountIcon={getAmountIcon}
                   formatCurrency={formatCurrency}
                   getCategoryDisplayName={getCategoryDisplayName}
+                  hideActionDropdown={hideActionDropdown}
                 />
               );
             })}

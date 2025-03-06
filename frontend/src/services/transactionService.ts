@@ -1,4 +1,6 @@
 import axiosInstance from './axiosConfig';
+import axios from 'axios';
+import { API_URL } from '../config';
 
 // Add the missing type definitions
 export interface Category {
@@ -55,6 +57,23 @@ export interface TransactionQuery {
   sortDirection?: 'asc' | 'desc';
 }
 
+// Add the CATEGORIES constant at the top of the file
+const CATEGORIES = [
+  'Food & Dining',
+  'Shopping',
+  'Housing',
+  'Transportation',
+  'Utilities',
+  'Healthcare',
+  'Entertainment',
+  'Personal Care',
+  'Education',
+  'Travel',
+  'Gifts & Donations',
+  'Income',
+  'Other',
+];
+
 // Individual export functions
 export const getTransactions = async (filters = {}) => {
   const response = await axiosInstance.get('/transactions', { params: filters });
@@ -86,7 +105,7 @@ export const importFromCSV = async (csvData: any[]) => {
   return response.data;
 };
 
-// Update the getAll method to support both pagination and filters
+// Update the getAll method to remove console logs
 const getAll = async (pageOrFilters?: number | TransactionQuery, pageSize = 50): Promise<{ 
   data: Transaction[], 
   total: number,
@@ -107,12 +126,21 @@ const getAll = async (pageOrFilters?: number | TransactionQuery, pageSize = 50):
   } 
   // If it's an object, treat it as filters
   else if (pageOrFilters && typeof pageOrFilters === 'object') {
-    const response = await axiosInstance.get('/transactions', { params: pageOrFilters });
+    // Additional safety check for NaN values
+    const safeFilters = { ...pageOrFilters };
+    Object.keys(safeFilters).forEach(key => {
+      const k = key as keyof TransactionQuery;
+      if (safeFilters[k] === 'NaN' || Number.isNaN(safeFilters[k])) {
+        delete safeFilters[k];
+      }
+    });
+    
+    const response = await axiosInstance.get('/transactions', { params: safeFilters });
     return { 
       data: response.data || [], 
       total: parseInt(response.headers['x-total-count'] || '0', 10) || response.data?.length || 0,
-      page: parseInt(response.headers['x-page'] || (pageOrFilters.page?.toString() || '1'), 10),
-      pageSize: parseInt(response.headers['x-page-size'] || (pageOrFilters.pageSize?.toString() || '50'), 10),
+      page: parseInt(response.headers['x-page'] || (safeFilters.page?.toString() || '1'), 10),
+      pageSize: parseInt(response.headers['x-page-size'] || (safeFilters.pageSize?.toString() || '50'), 10),
       totalPages: parseInt(response.headers['x-total-pages'] || '1', 10)
     };
   } 
@@ -182,5 +210,21 @@ export const getTransactionsForNetWorth = async (params?: any) => {
   } catch (error) {
     console.error('Error fetching transactions for net worth:', error);
     throw error;
+  }
+};
+
+export const getCategories = async (): Promise<string[]> => {
+  try {
+    // First check if the endpoint exists by making a request
+    const response = await axiosInstance.get('/transactions/categories');
+    
+    // Make sure we got an array back
+    if (Array.isArray(response.data)) {
+      return response.data;
+    } else {
+      return CATEGORIES;
+    }
+  } catch (error) {
+    return CATEGORIES;
   }
 }; 

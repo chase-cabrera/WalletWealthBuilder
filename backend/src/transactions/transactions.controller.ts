@@ -82,6 +82,14 @@ export class TransactionsController {
     return response.json(result.data);
   }
 
+  @Get('categories')
+  @ApiOperation({ summary: 'Get all unique transaction categories for the current user' })
+  @ApiResponse({ status: 200, description: 'Return all unique categories.' })
+  async getCategories(@Request() req): Promise<string[]> {
+    const user = req.user;
+    return this.transactionsService.getUniqueCategories(user.id);
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Get a transaction by ID' })
   @ApiResponse({ status: 200, description: 'Return the transaction.' })

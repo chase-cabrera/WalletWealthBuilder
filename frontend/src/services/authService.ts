@@ -102,7 +102,7 @@ const authService = {
     if (!token) return null;
     
     try {
-      const response = await axiosInstance.get('/api/auth/me');
+      const response = await axiosInstance.get('/auth/me');
       const user = response.data;
       
       localStorage.setItem('user', JSON.stringify(user));

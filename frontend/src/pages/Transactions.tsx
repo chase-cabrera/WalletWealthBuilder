@@ -27,6 +27,7 @@ import transactionService, {
 } from '../services/transactionService';
 import accountService, { Account } from '../services/accountService';
 import { format } from 'date-fns';
+import { useLocation } from 'react-router-dom';
 
 const Transactions: React.FC = () => {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -48,6 +49,7 @@ const Transactions: React.FC = () => {
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   
   const theme = useTheme();
+  const location = useLocation();
 
   // Memoize the account map for better performance
   const accountMap = useMemo(() => {
@@ -74,8 +76,6 @@ const Transactions: React.FC = () => {
       setTotalCount(result.total);
       setTotalPages(result.totalPages);
       setPage(result.page);
-      
-      console.log(`Loaded ${result.data.length} transactions (page ${result.page} of ${result.totalPages})`);
     } catch (error) {
       console.error('Failed to fetch transactions:', error);
       setError('Failed to load transactions. Please try again later.');
@@ -105,8 +105,6 @@ const Transactions: React.FC = () => {
       setTotalCount(result.total);
       setTotalPages(result.totalPages);
       setPage(result.page);
-      
-      console.log(`Loaded ${result.data.length} more transactions (page ${result.page} of ${result.totalPages})`);
     } catch (error) {
       console.error('Failed to load more transactions:', error);
     } finally {
@@ -127,6 +125,38 @@ const Transactions: React.FC = () => {
     fetchAccounts();
     fetchTransactions(1);
   }, [fetchAccounts, fetchTransactions]);
+
+  useEffect(() => {
+    try {
+      // Parse query parameters
+      const params = new URLSearchParams(location.search);
+      const startDate = params.get('startDate');
+      const endDate = params.get('endDate');
+      const category = params.get('category');
+      
+      // If we have parameters, set filters and fetch transactions
+      if (startDate || endDate || category) {
+        const newFilters: TransactionQuery = { ...filters };
+        
+        if (startDate) newFilters.startDate = startDate;
+        if (endDate) newFilters.endDate = endDate;
+        if (category) newFilters.category = category;
+        
+        // Make sure we don't have any NaN values
+        Object.keys(newFilters).forEach(key => {
+          const k = key as keyof TransactionQuery;
+          if (newFilters[k] === 'NaN' || Number.isNaN(newFilters[k])) {
+            delete newFilters[k];
+          }
+        });
+        
+        setFilters(newFilters);
+        fetchTransactions(1, newFilters);
+      }
+    } catch (error) {
+      console.error('Error parsing URL parameters:', error);
+    }
+  }, [location.search]);
 
   const handlePageChange = (event: React.ChangeEvent<unknown>, value: number) => {
     setPage(value);
@@ -293,6 +323,7 @@ const Transactions: React.FC = () => {
         <TransactionFilters 
           onFilter={handleFilter}
           accounts={accounts}
+          initialFilters={filters}
         />
       </Paper>
       
@@ -318,6 +349,7 @@ const Transactions: React.FC = () => {
               onDelete={handleDelete}
               onBatchUpdate={handleBatchUpdate}
               accounts={accountMap}
+              hideActionDropdown={true}
             />
             
             {totalPages > 1 && (
