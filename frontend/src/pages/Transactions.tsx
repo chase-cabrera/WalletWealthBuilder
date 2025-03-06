@@ -15,7 +15,7 @@ import {
   TextField,
   MenuItem
 } from '@mui/material';
-import { Add as AddIcon } from '@mui/icons-material';
+import { Add as AddIcon, FileDownload as FileDownloadIcon, FileUpload as FileUploadIcon } from '@mui/icons-material';
 import TransactionList from '../components/transactions/TransactionList';
 import TransactionForm from '../components/transactions/TransactionForm';
 import TransactionFilters from '../components/transactions/TransactionFilters';
@@ -251,24 +251,38 @@ const Transactions: React.FC = () => {
         </Alert>
       </Snackbar>
       
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h4" component="h1" gutterBottom>
+      <Box sx={{ 
+        display: 'flex', 
+        justifyContent: 'space-between', 
+        alignItems: { xs: 'flex-start', sm: 'center' },
+        flexDirection: { xs: 'column', sm: 'row' },
+        gap: { xs: 2, sm: 0 },
+        mb: 3 
+      }}>
+        <Typography variant="h4" component="h1">
           Transactions
         </Typography>
-        <Box>
-          <ImportExportButtons 
-            onImport={handleImportData} 
-            transactions={transactions}
-          />
-          <Button 
-            variant="contained" 
-            color="primary" 
+        <Box sx={{ 
+          display: 'flex', 
+          gap: 2,
+          flexWrap: { xs: 'wrap', sm: 'nowrap' },
+          width: { xs: '100%', sm: 'auto' }
+        }}>
+          <Box sx={{ flexGrow: { xs: 1, sm: 0 } }}>
+            <ImportExportButtons 
+              onImport={handleImportData} 
+              transactions={transactions}
+            />
+          </Box>
+          <Button
+            variant="contained"
+            color="primary"
             startIcon={<AddIcon />}
             onClick={() => {
               setSelectedTransaction(undefined);
               setIsFormOpen(true);
             }}
-            sx={{ ml: 2 }}
+            sx={{ flexGrow: { xs: 1, sm: 0 } }}
           >
             Add Transaction
           </Button>
