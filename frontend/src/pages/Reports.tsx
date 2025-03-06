@@ -8,6 +8,8 @@ import 'jspdf-autotable';
 import html2canvas from 'html2canvas';
 import FileDownloadIcon from '@mui/icons-material/FileDownload';
 import { useNavigate } from 'react-router-dom';
+import { format } from 'date-fns';
+import IncomeVsExpensesChart from '../components/reports/IncomeVsExpensesChart';
 
 // Define chart colors
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d', '#ffc658', '#8dd1e1', '#a4de6c', '#d0ed57'];
@@ -124,67 +126,130 @@ const Reports: React.FC = () => {
     // Format data for the spending by category chart
     const formattedData: any[] = [];
     
-    // Get the most recent month
-    const months = Object.keys(data).sort();
-    const latestMonth = months[months.length - 1];
+    // For 'this-month' or 'last-month', use the only month in the data
+    // For other time ranges, use the aggregated data across all months
+    let categoryTotals: Record<string, number> = {};
     
-    if (latestMonth && data[latestMonth]) {
-      // Create pie chart data for the latest month
-      const categories = Object.entries(data[latestMonth])
-        .map(([category, amount]: [string, any]) => ({ 
-          category, 
-          amount: Number(amount) 
-        }))
-        .sort((a, b) => b.amount - a.amount);
+    if (timeRange === 'this-month' || timeRange === 'last-month') {
+      // Get the most recent month
+      const months = Object.keys(data).sort();
+      const latestMonth = months[months.length - 1];
       
-      // Take top 8 categories
-      const topCategories = categories.slice(0, 8);
-      
-      // Sum the rest as "Other"
-      const otherCategories = categories.slice(8);
-      const otherTotal = otherCategories.reduce((sum, item) => sum + item.amount, 0);
-      
-      // Add top categories to chart data
-      topCategories.forEach((item, index) => {
-        formattedData.push({
-          name: item.category,
-          value: item.amount,
-          color: COLORS[index % COLORS.length]
+      if (latestMonth && data[latestMonth]) {
+        categoryTotals = data[latestMonth];
+      }
+    } else {
+      // Aggregate spending across all months in the range
+      Object.values(data).forEach((monthData: any) => {
+        Object.entries(monthData).forEach(([category, amount]: [string, any]) => {
+          categoryTotals[category] = (categoryTotals[category] || 0) + Number(amount);
         });
       });
-      
-      // Add "Other" category if there are more than 8 categories
-      if (otherCategories.length > 0) {
-        formattedData.push({
-          name: 'Other',
-          value: otherTotal,
-          color: COLORS[8 % COLORS.length]
-        });
-      }
+    }
+    
+    // Create pie chart data from the category totals
+    const categories = Object.entries(categoryTotals)
+      .map(([category, amount]: [string, any]) => ({ 
+        category, 
+        amount: Number(amount) 
+      }))
+      .sort((a, b) => b.amount - a.amount);
+    
+    // Take top 8 categories
+    const topCategories = categories.slice(0, 8);
+    
+    // Sum the rest as "Other"
+    const otherCategories = categories.slice(8);
+    const otherTotal = otherCategories.reduce((sum, item) => sum + item.amount, 0);
+    
+    // Add top categories to chart data
+    topCategories.forEach((item, index) => {
+      formattedData.push({
+        name: item.category,
+        value: item.amount,
+        color: COLORS[index % COLORS.length]
+      });
+    });
+    
+    // Add "Other" category if there are more than 8 categories
+    if (otherCategories.length > 0) {
+      formattedData.push({
+        name: 'Other',
+        value: otherTotal,
+        color: COLORS[8 % COLORS.length]
+      });
     }
     
     return formattedData;
   };
 
   const formatIncomeExpenseData = (data: any) => {
-    // Format data for the income vs expenses chart
-    const formattedData = Object.entries(data).map(([month, values]: [string, any]) => ({
-      name: month,
-      Income: values.INCOME || 0,
-      Expenses: values.EXPENSE || 0,
-      Savings: (values.INCOME || 0) - (values.EXPENSE || 0)
-    }));
+    // Get the date range based on the selected timeRange
+    const now = new Date();
+    let startDate: Date;
+    let endDate: Date = new Date(now.getFullYear(), now.getMonth(), 1); // First day of current month
     
-    // If timeRange is 'this-month' or 'last-month', ensure we only show one month
-    if (timeRange === 'this-month' || timeRange === 'last-month') {
-      // For 'this-month' or 'last-month', we should only have one data point
-      // If we have more, take only the most recent one (last in the array)
-      if (formattedData.length > 1) {
-        return [formattedData[formattedData.length - 1]];
-      }
+    if (timeRange === 'this-month') {
+      startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+      endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    } else if (timeRange === 'last-month') {
+      startDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      endDate = new Date(now.getFullYear(), now.getMonth(), 0);
+    } else {
+      // For numeric values (3, 6, 12 months)
+      const months = parseInt(timeRange, 10);
+      startDate = new Date(now);
+      startDate.setMonth(startDate.getMonth() - months + 1);
+      startDate.setDate(1); // First day of the month
     }
     
-    return formattedData;
+    // Create an array of all months in the range
+    const allMonths: string[] = [];
+    const currentDate = new Date(startDate);
+    
+    while (currentDate <= endDate) {
+      allMonths.push(format(currentDate, 'yyyy-MM'));
+      currentDate.setMonth(currentDate.getMonth() + 1);
+    }
+    
+    // Format data for the income vs expenses chart
+    const formattedData = Object.entries(data).map(([month, values]: [string, any]) => {
+      // Parse the month string to a Date object
+      const monthDate = new Date(month);
+      
+      return {
+        // Format the month to show the correct month name and year
+        name: format(monthDate, 'yyyy-MM'),
+        Income: values.INCOME || 0,
+        Expenses: values.EXPENSE || 0,
+        Savings: (values.INCOME || 0) - (values.EXPENSE || 0)
+      };
+    });
+    
+    // Create a map of existing data
+    const dataMap = formattedData.reduce((acc, item) => {
+      acc[item.name] = item;
+      return acc;
+    }, {} as Record<string, any>);
+    
+    // Create the final data array with all months
+    const completeData = allMonths.map(month => {
+      if (dataMap[month]) {
+        return dataMap[month];
+      } else {
+        return {
+          name: month,
+          Income: 0,
+          Expenses: 0,
+          Savings: 0
+        };
+      }
+    });
+    
+    // Sort by date to ensure chronological order
+    completeData.sort((a, b) => new Date(a.name).getTime() - new Date(b.name).getTime());
+    
+    return completeData;
   };
 
   const formatNetWorthData = (data: any) => {
@@ -404,18 +469,18 @@ const Reports: React.FC = () => {
 
   if (loading) {
     return (
-      <Container maxWidth="lg" sx={{ py: 4, display: 'flex', justifyContent: 'center' }}>
+      <Container maxWidth={false} sx={{ py: 4, px: { xs: 2, sm: 3, md: 4 }, display: 'flex', justifyContent: 'center' }}>
         <CircularProgress />
       </Container>
     );
   }
 
   return (
-    <Container maxWidth="lg" sx={{ py: 4 }}>
+    <Container maxWidth={false} sx={{ py: 4, px: { xs: 2, sm: 3, md: 4 } }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
         <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 2 }}>
           <Typography variant="h4" component="h1" fontWeight="bold">
-            Financial Reports
+            Financial Reports {getTimeRangeDisplay()}
           </Typography>
           <Typography variant="subtitle1" color="text.secondary">
             {getTimeRangeDisplay()}
@@ -459,7 +524,11 @@ const Reports: React.FC = () => {
           <Grid item xs={12} md={6}>
             <Paper sx={{ p: 3, borderRadius: 2, height: '100%' }}>
               <Typography variant="h6" gutterBottom>
-                Spending by Category (Latest Month)
+                {timeRange === 'this-month' 
+                  ? 'Spending by Category (This Month)'
+                  : timeRange === 'last-month'
+                    ? 'Spending by Category (Last Month)'
+                    : `Spending by Category (Last ${timeRange} Months)`}
               </Typography>
               
               {spendingData && spendingData.length > 0 ? (
@@ -515,24 +584,7 @@ const Reports: React.FC = () => {
               
               {incomeExpenseData && incomeExpenseData.length > 0 ? (
                 <Box sx={{ height: 400 }} id="income-chart">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart
-                      data={incomeExpenseData}
-                      margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
-                    >
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="name" />
-                      <YAxis />
-                      <Tooltip 
-                        formatter={(value) => formatCurrency(value as number)} 
-                        labelFormatter={(name) => `${name}`}
-                      />
-                      <Legend verticalAlign="top" height={36} />
-                      <Bar dataKey="Income" fill="#00C49F" />
-                      <Bar dataKey="Expenses" fill="#FF8042" />
-                      <Bar dataKey="Savings" fill="#0088FE" />
-                    </BarChart>
-                  </ResponsiveContainer>
+                  <IncomeVsExpensesChart data={incomeExpenseData} />
                 </Box>
               ) : (
                 <Typography variant="body2" color="text.secondary">
