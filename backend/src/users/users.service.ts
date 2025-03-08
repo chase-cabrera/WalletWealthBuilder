@@ -13,7 +13,11 @@ export class UsersService {
   ) {}
 
   async findByEmail(email: string): Promise<User | null> {
-    return this.usersRepository.findOne({ where: { email } });
+    // Use case-insensitive query for email lookup
+    return this.usersRepository
+      .createQueryBuilder('user')
+      .where('LOWER(user.email) = LOWER(:email)', { email })
+      .getOne();
   }
 
   async findById(id: number): Promise<User | null> {
@@ -35,6 +39,7 @@ export class UsersService {
     // Create and save the user
     const user = this.usersRepository.create({
       ...userData,
+      // Store email in its original case but ensure lookups are case-insensitive
       password: hashedPassword,
     });
     

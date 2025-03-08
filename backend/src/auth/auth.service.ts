@@ -52,8 +52,14 @@ export class AuthService {
   }
 
   async validateUser(email: string, password: string): Promise<any> {
-    // Find user by email instead of username
-    const user = await this.usersService.findByEmail(email);
+    // Convert email to lowercase for case-insensitive comparison
+    const normalizedEmail = email.toLowerCase();
+    
+    // Find user by normalized email using a custom query
+    const user = await this.userRepository
+      .createQueryBuilder('user')
+      .where('LOWER(user.email) = LOWER(:email)', { email: normalizedEmail })
+      .getOne();
     
     if (!user) {
       return null;
@@ -70,9 +76,11 @@ export class AuthService {
   }
 
   async login(loginDto: LoginDto) {
-    const { email, password } = loginDto;
+    // Convert email to lowercase
+    const normalizedEmail = loginDto.email.toLowerCase();
     
-    const user = await this.validateUser(email, password);
+    // Use the validateUser method which now handles case-insensitive email
+    const user = await this.validateUser(normalizedEmail, loginDto.password);
     
     if (!user) {
       throw new UnauthorizedException('Invalid email or password');

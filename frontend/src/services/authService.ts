@@ -41,17 +41,16 @@ const authService = {
   async login(credentials: LoginCredentials): Promise<User> {
     try {
       console.log('Sending login request with:', credentials);
+      
+      // Send the email as-is, without normalizing to lowercase
+      // The backend will handle case-insensitive matching
       const response = await axios.post(`${API_URL}/auth/login`, credentials);
       
       // Store the token in localStorage
-      if (response.data.token) {
-        localStorage.setItem('token', response.data.token);
-      }
+      localStorage.setItem(TOKEN_KEY, response.data.token);
       
-      // Store the user in localStorage
-      if (response.data.user) {
-        localStorage.setItem('user', JSON.stringify(response.data.user));
-      }
+      // Store the user object in localStorage
+      localStorage.setItem(USER_KEY, JSON.stringify(response.data.user));
       
       return response.data.user;
     } catch (error) {
