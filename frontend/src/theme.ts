@@ -3,8 +3,7 @@ import { createTheme } from '@mui/material/styles';
 const theme = createTheme({
   palette: {
     primary: {
-      main: '#1976d2',
-      light: '#e3f2fd',
+      main: '#3f51b5',
     },
     secondary: {
       main: '#f50057',
@@ -70,8 +69,11 @@ const theme = createTheme({
     MuiTextField: {
       styleOverrides: {
         root: {
+          '& .MuiInputBase-input': {
+            color: 'rgba(0, 0, 0, 0.87)',
+          },
           '& .MuiOutlinedInput-root': {
-            borderRadius: 8,
+            backgroundColor: 'white',
           },
         },
       },

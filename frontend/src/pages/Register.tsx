@@ -5,14 +5,17 @@ import {
   TextField, 
   Button, 
   Paper, 
-  Container,
   Link as MuiLink,
   Alert,
   CircularProgress,
-  Grid
+  Grid,
+  InputAdornment,
+  IconButton
 } from '@mui/material';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import ModernBackground from '../components/auth/ModernBackground';
+import { Visibility, VisibilityOff, Email, Lock, Person } from '@mui/icons-material';
 
 const Register: React.FC = () => {
   const [email, setEmail] = useState('');
@@ -22,6 +25,7 @@ const Register: React.FC = () => {
   const [lastName, setLastName] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const navigate = useNavigate();
   const { register } = useAuth();
 
@@ -44,7 +48,6 @@ const Register: React.FC = () => {
       
       await register(email, password, firstName, lastName);
       
-      // Navigate to dashboard after successful registration
       navigate('/');
     } catch (err: any) {
       console.error('Registration error:', err);
@@ -58,112 +61,301 @@ const Register: React.FC = () => {
     }
   };
 
+  const handleTogglePasswordVisibility = () => {
+    setShowPassword(!showPassword);
+  };
+
   return (
-    <Container maxWidth="sm">
-      <Box sx={{ mt: 8, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-        <Paper elevation={3} sx={{ p: 4, width: '100%', borderRadius: 2 }}>
-          <Typography variant="h4" component="h1" gutterBottom align="center" fontWeight="bold">
+    <ModernBackground>
+      <Paper 
+        elevation={6} 
+        sx={{ 
+          p: 4, 
+          width: '100%',
+          maxWidth: 550,
+          borderRadius: 3,
+          boxShadow: '0 8px 32px rgba(0,0,0,0.2)',
+          background: 'rgba(255, 255, 255, 0.95)',
+          backdropFilter: 'blur(8px)',
+          border: '1px solid rgba(255,255,255,0.3)',
+          position: 'relative',
+          zIndex: 1
+        }}
+      >
+        <Box sx={{ mb: 4, textAlign: 'center' }}>
+          <Typography 
+            variant="h4" 
+            component="h1" 
+            gutterBottom 
+            fontWeight="bold" 
+            color="primary"
+            sx={{ fontSize: { xs: '1.8rem', sm: '2.2rem' } }}
+          >
             Create Account
           </Typography>
-          
-          {error && (
-            <Alert severity="error" sx={{ mb: 3 }}>
-              {error}
-            </Alert>
-          )}
-          
-          <Box component="form" onSubmit={handleSubmit} sx={{ mt: 1 }}>
-            <Grid container spacing={2}>
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  margin="normal"
-                  fullWidth
-                  id="firstName"
-                  label="First Name"
-                  name="firstName"
-                  autoComplete="given-name"
-                  value={firstName}
-                  onChange={(e) => setFirstName(e.target.value)}
-                  disabled={loading}
-                />
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  margin="normal"
-                  fullWidth
-                  id="lastName"
-                  label="Last Name"
-                  name="lastName"
-                  autoComplete="family-name"
-                  value={lastName}
-                  onChange={(e) => setLastName(e.target.value)}
-                  disabled={loading}
-                />
-              </Grid>
+          <Typography 
+            variant="body1" 
+            sx={{ 
+              color: 'rgba(0, 0, 0, 0.7)',
+              fontWeight: 500,
+              mb: 1
+            }}
+          >
+            Join us to start managing your finances
+          </Typography>
+        </Box>
+        
+        {error && (
+          <Alert severity="error" sx={{ mb: 3 }}>
+            {error}
+          </Alert>
+        )}
+        
+        <Box component="form" onSubmit={handleSubmit}>
+          <Grid container spacing={2}>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                margin="normal"
+                fullWidth
+                id="firstName"
+                label="First Name"
+                name="firstName"
+                autoComplete="given-name"
+                value={firstName}
+                onChange={(e) => setFirstName(e.target.value)}
+                disabled={loading}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <Person color="primary" />
+                    </InputAdornment>
+                  ),
+                }}
+                inputProps={{ style: { color: 'black', backgroundColor: 'white' } }}
+                sx={{
+                  mb: 2,
+                  '& .MuiOutlinedInput-root': {
+                    backgroundColor: 'white',
+                    borderRadius: 2,
+                  },
+                  '& .MuiInputBase-input': {
+                    color: 'rgba(0, 0, 0, 0.87)',
+                  },
+                  '& .MuiInputLabel-root': {
+                    color: 'rgba(0, 0, 0, 0.7)',
+                  },
+                  '& .MuiInputLabel-root.Mui-focused': {
+                    color: 'primary.main',
+                  }
+                }}
+              />
             </Grid>
-            
-            <TextField
-              margin="normal"
-              required
-              fullWidth
-              id="email"
-              label="Email Address"
-              name="email"
-              autoComplete="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              disabled={loading}
-            />
-            
-            <TextField
-              margin="normal"
-              required
-              fullWidth
-              name="password"
-              label="Password"
-              type="password"
-              id="password"
-              autoComplete="new-password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              disabled={loading}
-            />
-            
-            <TextField
-              margin="normal"
-              required
-              fullWidth
-              name="confirmPassword"
-              label="Confirm Password"
-              type="password"
-              id="confirmPassword"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              disabled={loading}
-            />
-            
-            <Button
-              type="submit"
-              fullWidth
-              variant="contained"
-              sx={{ mt: 3, mb: 2, py: 1.5 }}
-              disabled={loading}
+            <Grid item xs={12} sm={6}>
+              <TextField
+                margin="normal"
+                fullWidth
+                id="lastName"
+                label="Last Name"
+                name="lastName"
+                autoComplete="family-name"
+                value={lastName}
+                onChange={(e) => setLastName(e.target.value)}
+                disabled={loading}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <Person color="primary" />
+                    </InputAdornment>
+                  ),
+                }}
+                inputProps={{ style: { color: 'black', backgroundColor: 'white' } }}
+                sx={{
+                  mb: 2,
+                  '& .MuiOutlinedInput-root': {
+                    backgroundColor: 'white',
+                    borderRadius: 2,
+                  },
+                  '& .MuiInputBase-input': {
+                    color: 'rgba(0, 0, 0, 0.87)',
+                  },
+                  '& .MuiInputLabel-root': {
+                    color: 'rgba(0, 0, 0, 0.7)',
+                  },
+                  '& .MuiInputLabel-root.Mui-focused': {
+                    color: 'primary.main',
+                  }
+                }}
+              />
+            </Grid>
+          </Grid>
+          
+          <TextField
+            margin="normal"
+            required
+            fullWidth
+            id="email"
+            label="Email Address"
+            name="email"
+            autoComplete="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            disabled={loading}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <Email color="primary" />
+                </InputAdornment>
+              ),
+            }}
+            inputProps={{ style: { color: 'black', backgroundColor: 'white' } }}
+            sx={{
+              mb: 3,
+              '& .MuiOutlinedInput-root': {
+                backgroundColor: 'white',
+                borderRadius: 2,
+              },
+              '& .MuiInputBase-input': {
+                color: 'rgba(0, 0, 0, 0.87)',
+              },
+              '& .MuiInputLabel-root': {
+                color: 'rgba(0, 0, 0, 0.7)',
+              },
+              '& .MuiInputLabel-root.Mui-focused': {
+                color: 'primary.main',
+              }
+            }}
+          />
+          
+          <TextField
+            margin="normal"
+            required
+            fullWidth
+            name="password"
+            label="Password"
+            type={showPassword ? 'text' : 'password'}
+            id="password"
+            autoComplete="new-password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            disabled={loading}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <Lock color="primary" />
+                </InputAdornment>
+              ),
+              endAdornment: (
+                <InputAdornment position="end">
+                  <IconButton
+                    aria-label="toggle password visibility"
+                    onClick={handleTogglePasswordVisibility}
+                    edge="end"
+                  >
+                    {showPassword ? <VisibilityOff /> : <Visibility />}
+                  </IconButton>
+                </InputAdornment>
+              )
+            }}
+            inputProps={{ style: { color: 'black', backgroundColor: 'white' } }}
+            sx={{
+              mb: 3,
+              '& .MuiOutlinedInput-root': {
+                backgroundColor: 'white',
+                borderRadius: 2,
+              },
+              '& .MuiInputBase-input': {
+                color: 'rgba(0, 0, 0, 0.87)',
+              },
+              '& .MuiInputLabel-root': {
+                color: 'rgba(0, 0, 0, 0.7)',
+              },
+              '& .MuiInputLabel-root.Mui-focused': {
+                color: 'primary.main',
+              }
+            }}
+          />
+          
+          <TextField
+            margin="normal"
+            required
+            fullWidth
+            name="confirmPassword"
+            label="Confirm Password"
+            type={showPassword ? 'text' : 'password'}
+            id="confirmPassword"
+            autoComplete="new-password"
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
+            disabled={loading}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <Lock color="primary" />
+                </InputAdornment>
+              ),
+            }}
+            inputProps={{ style: { color: 'black', backgroundColor: 'white' } }}
+            sx={{
+              mb: 3,
+              '& .MuiOutlinedInput-root': {
+                backgroundColor: 'white',
+                borderRadius: 2,
+              },
+              '& .MuiInputBase-input': {
+                color: 'rgba(0, 0, 0, 0.87)',
+              },
+              '& .MuiInputLabel-root': {
+                color: 'rgba(0, 0, 0, 0.7)',
+              },
+              '& .MuiInputLabel-root.Mui-focused': {
+                color: 'primary.main',
+              }
+            }}
+          />
+          
+          <Button
+            type="submit"
+            fullWidth
+            variant="contained"
+            sx={{ 
+              mt: 2, 
+              mb: 3, 
+              py: 1.5,
+              borderRadius: 2,
+              fontWeight: 'bold',
+              fontSize: '1rem',
+              textTransform: 'none',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.15)'
+            }}
+            disabled={loading}
+          >
+            {loading ? <CircularProgress size={24} /> : 'Create Account'}
+          </Button>
+          <Box sx={{ mt: 2, textAlign: 'center' }}>
+            <Typography 
+              variant="body2" 
+              sx={{ 
+                color: 'rgba(0, 0, 0, 0.7)',
+                fontWeight: 500,
+              }}
             >
-              {loading ? <CircularProgress size={24} /> : 'Register'}
-            </Button>
-            
-            <Box sx={{ mt: 2, textAlign: 'center' }}>
-              <Typography variant="body2">
-                Already have an account?{' '}
-                <MuiLink component={Link} to="/login" underline="hover">
-                  Login here
-                </MuiLink>
-              </Typography>
-            </Box>
+              Already have an account?{' '}
+              <MuiLink 
+                component={Link} 
+                to="/login" 
+                underline="hover"
+                sx={{ 
+                  fontWeight: 600,
+                  color: 'primary.main'
+                }}
+              >
+                Login here
+              </MuiLink>
+            </Typography>
           </Box>
-        </Paper>
-      </Box>
-    </Container>
+        </Box>
+      </Paper>
+    </ModernBackground>
   );
 };
 
