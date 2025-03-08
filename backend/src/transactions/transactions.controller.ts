@@ -108,6 +108,18 @@ export class TransactionsController {
     return this.transactionsService.update(+id, updateTransactionDto, user.id);
   }
 
+  @Delete('all')
+  @ApiOperation({ summary: 'Delete all transactions for the current user' })
+  @ApiResponse({ status: 200, description: 'All transactions have been successfully deleted.' })
+  async deleteAll(@Request() req): Promise<{ message: string; count: number }> {
+    const user = req.user;
+    const result = await this.transactionsService.deleteAll(user.id);
+    return { 
+      message: 'All transactions deleted successfully', 
+      count: result 
+    };
+  }
+
   @Delete(':id')
   @ApiOperation({ summary: 'Delete a transaction' })
   @ApiResponse({ status: 200, description: 'The transaction has been successfully deleted.' })

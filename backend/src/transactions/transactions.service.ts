@@ -200,55 +200,34 @@ export class TransactionsService {
     let success = 0;
     let failed = 0;
     
-    // Process in batches to improve performance with large datasets
-    const BATCH_SIZE = 50;
-    const batches: any[][] = [];
+    // Process in batches to avoid overwhelming the database
+    const batchSize = 50;
+    const batches = [];
     
-    // Split the data into batches
-    for (let i = 0; i < csvData.length; i += BATCH_SIZE) {
-      batches.push(csvData.slice(i, i + BATCH_SIZE));
+    for (let i = 0; i < csvData.length; i += batchSize) {
+      batches.push(csvData.slice(i, i + batchSize));
     }
     
-    // Process each batch
     for (const batch of batches) {
-      const transactionsToCreate: CreateTransactionDto[] = [];
-      
-      // Prepare all transactions in the batch
-      for (const row of batch) {
-        try {
-          // Determine transaction type
-          const type = row.type === 'INCOME' ? 'INCOME' : 'EXPENSE';
-          
-          // Prepare transaction data from CSV row
-          const transactionData: CreateTransactionDto = {
-            description: row.description || 'Imported Transaction',
-            amount: parseFloat(row.amount) || 0,
-            date: row.date ? new Date(row.date).toISOString() : new Date().toISOString(),
-            type: type,
-            category: row.category || 'Uncategorized',
-            accountId: row.accountId ? parseInt(row.accountId) : undefined,
-          };
-          
-          transactionsToCreate.push(transactionData);
-        } catch (error) {
-          console.error('Error preparing transaction:', error);
-          failed++;
-        }
-      }
-      
-      // Create all transactions in the batch
       try {
         await Promise.all(
-          transactionsToCreate.map(async (data) => {
+          batch.map(async (data) => {
             try {
-              // Create the transaction with proper category linking
+              // Check if this is a savings-related transaction
+              const isSavingsTransaction = 
+                (data.category && 
+                  (data.category.toLowerCase().includes('saving') || 
+                   data.category.toLowerCase().includes('investment')));
+              
+              // If it's a savings transaction, ensure the amount is positive
+              if (isSavingsTransaction && data.amount < 0) {
+                data.amount = Math.abs(data.amount);
+              }
+              
+              // Create the transaction
               const transaction = this.transactionRepository.create({
-                description: data.description,
-                amount: data.amount,
-                date: data.date,
-                type: data.type,
-                category: data.category, // Still store the category name for backward compatibility
-                user: user,
+                ...data,
+                user,
               });
               
               // Link to account if provided
@@ -315,5 +294,49 @@ export class TransactionsService {
       .map(c => c.category)
       .filter(c => c)
       .sort(); // Sort alphabetically
+  }
+
+  async deleteAll(userId: number): Promise<number> {
+    // First, get all transactions with their accounts to update balances
+    const transactions = await this.transactionRepository.find({
+      where: { user: { id: userId } },
+      relations: ['account'],
+    });
+    
+    // Create a map to track balance adjustments for each account
+    const accountBalanceAdjustments = new Map<number, number>();
+    
+    // Calculate balance adjustments for each account
+    for (const transaction of transactions) {
+      if (transaction.account) {
+        const accountId = transaction.account.id;
+        const adjustment = accountBalanceAdjustments.get(accountId) || 0;
+        
+        // Reverse the effect of the transaction on the account balance
+        if (transaction.type === 'INCOME') {
+          accountBalanceAdjustments.set(accountId, adjustment - transaction.amount);
+        } else if (transaction.type === 'EXPENSE') {
+          accountBalanceAdjustments.set(accountId, adjustment + transaction.amount);
+        }
+      }
+    }
+    
+    // Update account balances
+    for (const [accountId, adjustment] of accountBalanceAdjustments.entries()) {
+      try {
+        const account = await this.accountsService.findOne(accountId, userId);
+        account.balance += adjustment;
+        await this.accountsService.update(accountId, { balance: account.balance }, userId);
+      } catch (error) {
+        console.error(`Error updating account ${accountId} balance:`, error);
+      }
+    }
+    
+    // Now delete all transactions
+    const result = await this.transactionRepository.delete({
+      user: { id: userId }
+    });
+    
+    return result.affected || 0;
   }
 } 

@@ -13,9 +13,14 @@ import {
   Snackbar,
   Pagination,
   TextField,
-  MenuItem
+  MenuItem,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogContentText,
+  DialogTitle,
 } from '@mui/material';
-import { Add as AddIcon, FileDownload as FileDownloadIcon, FileUpload as FileUploadIcon } from '@mui/icons-material';
+import { Add as AddIcon, FileDownload as FileDownloadIcon, FileUpload as FileUploadIcon, DeleteForever as DeleteForeverIcon } from '@mui/icons-material';
 import TransactionList from '../components/transactions/TransactionList';
 import TransactionForm from '../components/transactions/TransactionForm';
 import TransactionFilters from '../components/transactions/TransactionFilters';
@@ -47,6 +52,8 @@ const Transactions: React.FC = () => {
   const [filters, setFilters] = useState<TransactionQuery>({});
   const [pageSize, setPageSize] = useState(50);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [deleteAllDialogOpen, setDeleteAllDialogOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   
   const theme = useTheme();
   const location = useLocation();
@@ -268,6 +275,31 @@ const Transactions: React.FC = () => {
     fetchTransactions(1, filters);
   };
 
+  const handleDeleteAllTransactions = async () => {
+    setIsDeleting(true);
+    try {
+      await transactionService.deleteAll();
+      // Refresh the transactions list
+      fetchTransactions();
+      // Show success message
+      setSnackbar({
+        open: true,
+        message: 'All transactions deleted successfully',
+        severity: 'success'
+      });
+    } catch (error) {
+      console.error('Error deleting all transactions:', error);
+      setSnackbar({
+        open: true,
+        message: 'Failed to delete all transactions',
+        severity: 'error'
+      });
+    } finally {
+      setIsDeleting(false);
+      setDeleteAllDialogOpen(false);
+    }
+  };
+
   return (
     <Box sx={{ p: 3 }}>
       <Snackbar 
@@ -298,6 +330,16 @@ const Transactions: React.FC = () => {
           flexWrap: { xs: 'wrap', sm: 'nowrap' },
           width: { xs: '100%', sm: 'auto' }
         }}>
+          <Button
+            variant="outlined"
+            color="error"
+            startIcon={<DeleteForeverIcon />}
+            onClick={() => setDeleteAllDialogOpen(true)}
+            disabled={loading || transactions.length === 0}
+            sx={{ flexGrow: { xs: 1, sm: 0 } }}
+          >
+            Delete All
+          </Button>
           <Box sx={{ flexGrow: { xs: 1, sm: 0 } }}>
             <ImportExportButtons 
               onImport={handleImportData} 
@@ -478,6 +520,36 @@ const Transactions: React.FC = () => {
           accounts={accounts}
         />
       )}
+      
+      <Dialog
+        open={deleteAllDialogOpen}
+        onClose={() => setDeleteAllDialogOpen(false)}
+      >
+        <DialogTitle>Delete All Transactions</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            Are you sure you want to delete all transactions? This action cannot be undone.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button 
+            onClick={() => setDeleteAllDialogOpen(false)} 
+            color="inherit"
+            disabled={isDeleting}
+          >
+            Cancel
+          </Button>
+          <Button 
+            onClick={handleDeleteAllTransactions} 
+            color="error" 
+            variant="contained"
+            disabled={isDeleting}
+            startIcon={isDeleting ? <CircularProgress size={20} color="inherit" /> : <DeleteForeverIcon />}
+          >
+            {isDeleting ? 'Deleting...' : 'Delete All'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };

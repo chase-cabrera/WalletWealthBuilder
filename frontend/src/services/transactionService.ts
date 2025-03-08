@@ -100,8 +100,38 @@ export const deleteTransaction = async (id: number) => {
   return response.data;
 };
 
-export const importFromCSV = async (csvData: any[]) => {
-  const response = await axiosInstance.post('/transactions/import/csv', csvData);
+export const importFromCSV = async (csvData: any[]): Promise<{ success: number; failed: number }> => {
+  const token = localStorage.getItem('token');
+  if (!token) {
+    throw new Error('No authentication token found');
+  }
+
+  // Process the data before sending to the server
+  const processedData = csvData.map(row => {
+    const description = row.description || '';
+    const category = row.category || '';
+    
+    // Check if this is a savings-related transaction
+    const isSavingsTransaction = 
+      category.toLowerCase().includes('saving') || 
+      category.toLowerCase().includes('investment');
+    
+    // If it's a savings transaction, ensure the amount is positive
+    if (isSavingsTransaction && row.amount < 0) {
+      row.amount = Math.abs(row.amount);
+    }
+    
+    return row;
+  });
+
+  // Send the processed data to the server
+  const response = await axios.post(`${API_URL}/transactions/import/csv`, processedData, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
   return response.data;
 };
 
@@ -157,6 +187,19 @@ const getAll = async (pageOrFilters?: number | TransactionQuery, pageSize = 50):
   }
 };
 
+const deleteAll = async (): Promise<void> => {
+  const token = localStorage.getItem('token');
+  if (!token) {
+    throw new Error('No authentication token found');
+  }
+
+  await axios.delete(`${API_URL}/transactions/all`, {
+    headers: {
+      Authorization: `Bearer ${token}`
+    }
+  });
+};
+
 // Default export for backward compatibility
 const transactionService = {
   getAll,
@@ -164,44 +207,22 @@ const transactionService = {
   create: createTransaction,
   update: updateTransaction,
   delete: deleteTransaction,
+  deleteAll,
   importFromCSV,
 };
 
 export default transactionService;
 
 /**
- * Gets transactions with special handling for savings
- * Treats transactions with "saving" in their description or category as positive values
+ * Gets transactions for net worth calculations
  */
 export const getTransactionsForNetWorth = async (params?: any) => {
   try {
     // Get regular transactions
     const transactions = await getAll(params);
     
-    // Process transactions to handle savings
+    // Simply add the netWorthAmount property equal to the original amount
     return transactions.data.map(transaction => {
-      // Check for savings-related keywords in description or category
-      const savingsKeywords = ['saving', 'investment', 'deposit', 'transfer to', '401k', 'ira', 'retirement'];
-      
-      const isSavingsTransaction = 
-        (transaction.description && 
-          savingsKeywords.some(keyword => 
-            transaction.description.toLowerCase().includes(keyword)
-          )
-        ) ||
-        (transaction.category && 
-          (transaction.category.toLowerCase().includes('saving') || 
-           transaction.category.toLowerCase().includes('investment'))
-        );
-      
-      // If it's a savings transaction and the amount is negative, make it positive for net worth calculation
-      if (isSavingsTransaction && transaction.amount < 0) {
-        return {
-          ...transaction,
-          netWorthAmount: Math.abs(transaction.amount) // Use a different property to not affect the original amount
-        };
-      }
-      
       return {
         ...transaction,
         netWorthAmount: transaction.amount
