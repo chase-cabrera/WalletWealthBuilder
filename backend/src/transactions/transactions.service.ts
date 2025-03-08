@@ -18,9 +18,13 @@ export class TransactionsService {
   ) {}
 
   async create(createTransactionDto: CreateTransactionDto, user: User): Promise<Transaction> {
-    const transaction = this.transactionRepository.create({
+    // Create a new transaction instance directly
+    const transaction = new Transaction();
+    
+    // Assign properties manually
+    Object.assign(transaction, {
       ...createTransactionDto,
-      user,
+      user
     });
 
     // If accountId is provided, fetch the account
@@ -202,7 +206,7 @@ export class TransactionsService {
     
     // Process in batches to avoid overwhelming the database
     const batchSize = 50;
-    const batches = [];
+    const batches: Array<Array<any>> = [];
     
     for (let i = 0; i < csvData.length; i += batchSize) {
       batches.push(csvData.slice(i, i + batchSize));
@@ -211,7 +215,7 @@ export class TransactionsService {
     for (const batch of batches) {
       try {
         await Promise.all(
-          batch.map(async (data) => {
+          batch.map(async (data: any) => {
             try {
               // Check if this is a savings-related transaction
               const isSavingsTransaction = 
@@ -224,26 +228,35 @@ export class TransactionsService {
                 data.amount = Math.abs(data.amount);
               }
               
-              // Create the transaction
-              const transaction = this.transactionRepository.create({
-                ...data,
-                user,
+              // Create a new transaction instance directly
+              const transaction = new Transaction();
+              
+              // Assign properties manually
+              Object.assign(transaction, {
+                description: data.description,
+                amount: parseFloat(data.amount),
+                date: new Date(data.date),
+                type: data.type || 'EXPENSE',
+                category: data.category,
+                user
               });
               
               // Link to account if provided
               if (data.accountId) {
                 try {
                   const account = await this.accountsService.findOne(data.accountId, user.id);
-                  transaction.account = account;
-                  
-                  // Update account balance
-                  if (transaction.type === 'INCOME') {
-                    account.balance += transaction.amount;
-                  } else if (transaction.type === 'EXPENSE') {
-                    account.balance -= transaction.amount;
+                  if (account) {
+                    transaction.account = account;
+                    
+                    // Update account balance
+                    if (transaction.type === 'INCOME') {
+                      account.balance += transaction.amount;
+                    } else if (transaction.type === 'EXPENSE') {
+                      account.balance -= transaction.amount;
+                    }
+                    
+                    await this.accountsService.update(account.id, { balance: account.balance }, user.id);
                   }
-                  
-                  await this.accountsService.update(account.id, { balance: account.balance }, user.id);
                 } catch (error) {
                   console.error('Error linking account:', error);
                   // Continue without account if not found
@@ -258,7 +271,9 @@ export class TransactionsService {
                     data.type,
                     user.id
                   );
-                  transaction.categoryObj = categoryObj;
+                  if (categoryObj) {
+                    (transaction as any).categoryObj = categoryObj;
+                  }
                 } catch (error) {
                   console.error('Error linking category:', error);
                   // Continue without category if error occurs
@@ -276,6 +291,7 @@ export class TransactionsService {
         );
       } catch (error) {
         console.error('Error processing batch:', error);
+        failed += batch.length;
       }
     }
     
