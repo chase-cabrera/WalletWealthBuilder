@@ -74,14 +74,14 @@ export class BudgetsService {
   }
 
   async processTransaction(transaction: Transaction): Promise<void> {
-    const budgets = await this.budgetRepository.find({
-      where: {
-        user: { id: transaction.user.id },
-        category: transaction.category,
-        startDate: LessThanOrEqual(transaction.date),
-        endDate: MoreThanOrEqual(transaction.date),
-      },
-    });
+    // Use query builder to avoid type issues
+    const budgets = await this.budgetRepository
+      .createQueryBuilder('budget')
+      .where('budget.user.id = :userId', { userId: transaction.user.id })
+      .andWhere('budget.category = :category', { category: transaction.category })
+      .andWhere('budget.startDate <= :date', { date: transaction.date })
+      .andWhere('budget.endDate >= :date', { date: transaction.date })
+      .getMany();
 
     for (const budget of budgets) {
       await this.budgetRepository.save(budget);

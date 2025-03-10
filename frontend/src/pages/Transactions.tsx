@@ -30,7 +30,7 @@ import {
   Chip,
   Menu,
 } from '@mui/material';
-import { Add as AddIcon, FileDownload as FileDownloadIcon, FileUpload as FileUploadIcon, DeleteForever as DeleteForeverIcon, MoreVert as MoreIcon, Edit as EditIcon, Close as CloseIcon } from '@mui/icons-material';
+import { Add as AddIcon, FileDownload as FileDownloadIcon, FileUpload as FileUploadIcon, DeleteForever as DeleteForeverIcon, MoreVert as MoreIcon, Edit as EditIcon, Close as CloseIcon, Category as CategoryIcon, Check as CheckIcon } from '@mui/icons-material';
 import TransactionList from '../components/transactions/TransactionList';
 import TransactionForm from '../components/transactions/TransactionForm';
 import TransactionFilters from '../components/transactions/TransactionFilters';
@@ -38,7 +38,8 @@ import ImportExportButtons from '../components/transactions/ImportExportButtons'
 import transactionService, { 
   Transaction, 
   CreateTransactionDto,
-  TransactionQuery
+  TransactionQuery,
+  CategoryObject
 } from '../services/transactionService';
 import accountService, { Account } from '../services/accountService';
 import { format } from 'date-fns';
@@ -74,6 +75,19 @@ const Transactions: React.FC = () => {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [editFormData, setEditFormData] = useState<Partial<Transaction>>({});
   const [categories, setCategories] = useState<CategoryType[]>([]);
+  const [categoryDialogOpen, setCategoryDialogOpen] = useState(false);
+  const [categoryToEdit, setCategoryToEdit] = useState<CategoryType | null>(null);
+  const [categoryToDelete, setCategoryToDelete] = useState<CategoryType | null>(null);
+  const [categoryDeleteDialogOpen, setCategoryDeleteDialogOpen] = useState(false);
+  const [categoryDeleteError, setCategoryDeleteError] = useState<string | null>(null);
+  const [newCategoryName, setNewCategoryName] = useState('');
+  const [newCategoryType, setNewCategoryType] = useState<'INCOME' | 'EXPENSE' | 'SAVING' | 'INVESTMENT'>('EXPENSE');
+  const [inlineEditCategoryId, setInlineEditCategoryId] = useState<number | null>(null);
+  const [inlineEditName, setInlineEditName] = useState('');
+  const [inlineEditType, setInlineEditType] = useState<'INCOME' | 'EXPENSE' | 'SAVING' | 'INVESTMENT'>('EXPENSE');
+  const [categoryFilter, setCategoryFilter] = useState('');
+  const [bulkEditDialogOpen, setBulkEditDialogOpen] = useState(false);
+  const [bulkEditData, setBulkEditData] = useState<Partial<Transaction>>({});
   
   const theme = useTheme();
   const location = useLocation();
@@ -202,7 +216,7 @@ const Transactions: React.FC = () => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const handleAdd = async (data: CreateTransactionDto | Partial<Transaction>) => {
+  const handleSubmit = async (data: Partial<Transaction>) => {
     try {
       // Convert Partial<Transaction> to CreateTransactionDto if needed
       const transactionData: CreateTransactionDto = {
@@ -213,7 +227,7 @@ const Transactions: React.FC = () => {
         note: data.note ?? '',
         date: data.date ?? format(new Date(), 'yyyy-MM-dd'),
         type: (data.type as 'INCOME' | 'EXPENSE') ?? 'EXPENSE',
-        category: data.category ?? 'Uncategorized',
+        category: getCategoryName(data.category),
         accountId: data.accountId
       };
       
@@ -227,16 +241,46 @@ const Transactions: React.FC = () => {
     }
   };
 
-  const handleEdit = async (id: number, data: Partial<CreateTransactionDto>) => {
-    try {
-      await transactionService.update(id, data);
-      setIsFormOpen(false);
-      setSelectedTransaction(undefined);
-      fetchTransactions(page);
-      showSnackbar('Transaction updated successfully', 'success');
-    } catch (error) {
-      console.error('Failed to update transaction:', error);
-      showSnackbar('Failed to update transaction', 'error');
+  const handleEdit = async (data: Partial<Transaction>) => {
+    if (currentTransactionId) {
+      try {
+        // Convert the data to CreateTransactionDto format
+        const updateData: Partial<CreateTransactionDto> = {
+          ...(data.amount !== undefined && { amount: data.amount }),
+          ...(data.description !== undefined && { description: data.description }),
+          ...(data.vendor !== undefined && { vendor: data.vendor }),
+          ...(data.purchaser !== undefined && { purchaser: data.purchaser }),
+          ...(data.note !== undefined && { note: data.note }),
+          ...(data.date !== undefined && { date: data.date }),
+          ...(data.type !== undefined && { type: data.type as 'INCOME' | 'EXPENSE' }),
+          ...(data.category !== undefined && { category: getCategoryName(data.category) }),
+          ...(data.accountId !== undefined && { accountId: data.accountId }),
+        };
+        
+        await transactionService.update(currentTransactionId, updateData);
+        
+        // Update the transactions list
+        fetchTransactions(page);
+        
+        // Show success message
+        setSnackbar({
+          open: true,
+          message: 'Transaction updated successfully',
+          severity: 'success'
+        });
+        
+        // Close the edit dialog
+        setIsEditDialogOpen(false);
+        setCurrentTransactionId(null);
+        setEditFormData({});
+      } catch (error) {
+        console.error('Error updating transaction:', error);
+        setSnackbar({
+          open: true,
+          message: 'Failed to update transaction',
+          severity: 'error'
+        });
+      }
     }
   };
 
@@ -259,10 +303,10 @@ const Transactions: React.FC = () => {
         ...(updates.vendor !== undefined && { vendor: updates.vendor }),
         ...(updates.purchaser !== undefined && { purchaser: updates.purchaser }),
         ...(updates.note !== undefined && { note: updates.note }),
-        ...(updates.category !== undefined && { category: updates.category }),
         ...(updates.date !== undefined && { date: updates.date }),
+        ...(updates.type !== undefined && { type: updates.type as 'INCOME' | 'EXPENSE' }),
+        ...(updates.category !== undefined && { category: getCategoryName(updates.category) }),
         ...(updates.accountId !== undefined && { accountId: updates.accountId }),
-        ...(updates.type === 'INCOME' || updates.type === 'EXPENSE' ? { type: updates.type as 'INCOME' | 'EXPENSE' } : {})
       };
       
       await Promise.all(ids.map(id => transactionService.update(id, updateData)));
@@ -389,59 +433,230 @@ const Transactions: React.FC = () => {
     }
   };
 
-  const handleSaveEdit = async (data: Partial<Transaction>) => {
-    if (currentTransactionId) {
-      try {
-        await transactionService.update(currentTransactionId, data);
-        
-        // Update the transactions list
-        fetchTransactions(page);
-        
-        // Show success message
-        setSnackbar({
-          open: true,
-          message: 'Transaction updated successfully',
-          severity: 'success'
-        });
-        
-        // Close the edit dialog
-        setIsEditDialogOpen(false);
-        setCurrentTransactionId(null);
-        setEditFormData({});
-      } catch (error) {
-        console.error('Failed to update transaction:', error);
-        setSnackbar({
-          open: true,
-          message: 'Failed to update transaction',
-          severity: 'error'
-        });
-      }
+  const handleSelectTransaction = (id: number, isSelected: boolean) => {
+    if (isSelected) {
+      setSelectedTransactions(prev => [...prev, id]);
+    } else {
+      setSelectedTransactions(prev => prev.filter(transId => transId !== id));
     }
   };
 
   const handleSelectAll = (event: React.ChangeEvent<HTMLInputElement>) => {
-    if (event.target.checked) {
-      const newSelected = transactions.map(t => t.id);
-      setSelectedTransactions(newSelected);
-    } else {
+    setSelectedTransactions(event.target.checked ? transactions.map(t => t.id) : []);
+  };
+
+  const handleBulkEditOpen = () => {
+    if (selectedTransactions.length === 0) {
+      showSnackbar('Please select at least one transaction to edit', 'error');
+      return;
+    }
+    setBulkEditData({});
+    setBulkEditDialogOpen(true);
+  };
+
+  const handleBulkEditClose = () => {
+    setBulkEditDialogOpen(false);
+    setBulkEditData({});
+  };
+
+  const handleBulkEditChange = (field: keyof Transaction, value: any) => {
+    setBulkEditData(prev => ({
+      ...prev,
+      [field]: value
+    }));
+  };
+
+  const handleBulkEditSubmit = async () => {
+    if (Object.keys(bulkEditData).length === 0) {
+      showSnackbar('No changes to apply', 'error');
+      return;
+    }
+
+    try {
+      await handleBatchUpdate(selectedTransactions, bulkEditData);
+      setBulkEditDialogOpen(false);
       setSelectedTransactions([]);
+      setBulkEditData({});
+      showSnackbar(`Successfully updated ${selectedTransactions.length} transactions`, 'success');
+    } catch (error) {
+      console.error('Failed to update transactions:', error);
+      showSnackbar('Failed to update transactions', 'error');
     }
   };
 
-  const handleSelectTransaction = (id: number) => {
-    const selectedIndex = selectedTransactions.indexOf(id);
-    let newSelected: number[] = [];
-
-    if (selectedIndex === -1) {
-      newSelected = [...selectedTransactions, id];
-    } else {
-      newSelected = selectedTransactions.filter(transactionId => transactionId !== id);
+  // Add a helper function to get category name
+  const getCategoryName = (category: string | CategoryObject | undefined): string => {
+    if (!category) return 'Uncategorized';
+    
+    if (typeof category === 'string') {
+      return category;
     }
-
-    setSelectedTransactions(newSelected);
+    
+    return category.name;
   };
 
-  const isSelectedTransaction = (id: number) => selectedTransactions.indexOf(id) !== -1;
+  const handleAddCategory = async () => {
+    if (!newCategoryName.trim()) return;
+    
+    try {
+      await categoryService.create({
+        name: newCategoryName.trim(),
+        type: newCategoryType,
+        description: '',
+        isDefault: false
+      });
+      
+      // Refresh categories
+      fetchCategories();
+      setNewCategoryName('');
+      showSnackbar('Category added successfully', 'success');
+    } catch (error) {
+      console.error('Failed to add category:', error);
+      showSnackbar('Failed to add category', 'error');
+    }
+  };
+
+  const handleEditCategory = (category: CategoryType) => {
+    setCategoryToEdit(category);
+    setNewCategoryName(category.name);
+    setNewCategoryType(category.type as 'INCOME' | 'EXPENSE' | 'SAVING' | 'INVESTMENT');
+  };
+
+  const handleUpdateCategory = async () => {
+    if (!categoryToEdit || !newCategoryName.trim()) return;
+    
+    try {
+      await categoryService.update(categoryToEdit.id, {
+        name: newCategoryName.trim(),
+        type: newCategoryType
+      });
+      
+      // Refresh categories
+      fetchCategories();
+      setCategoryToEdit(null);
+      setNewCategoryName('');
+      showSnackbar('Category updated successfully', 'success');
+    } catch (error) {
+      console.error('Failed to update category:', error);
+      showSnackbar('Failed to update category', 'error');
+    }
+  };
+
+  const handleDeleteCategoryClick = (category: CategoryType) => {
+    setCategoryToDelete(category);
+    setCategoryDeleteDialogOpen(true);
+    setCategoryDeleteError(null);
+  };
+
+  const handleDeleteCategory = async () => {
+    if (!categoryToDelete) return;
+    
+    try {
+      await categoryService.delete(categoryToDelete.id);
+      
+      // Refresh categories
+      fetchCategories();
+      setCategoryToDelete(null);
+      setCategoryDeleteDialogOpen(false);
+      showSnackbar('Category deleted successfully', 'success');
+    } catch (error: any) {
+      console.error('Failed to delete category:', error);
+      
+      // Check if the error is due to associated transactions
+      if (error.response?.status === 409 || error.response?.data?.message?.includes('transactions')) {
+        setCategoryDeleteError('Cannot delete this category because it has associated transactions.');
+      } else {
+        setCategoryDeleteError('Failed to delete category. Please try again.');
+      }
+    }
+  };
+
+  const handleStartInlineEdit = (category: CategoryType) => {
+    setInlineEditCategoryId(category.id);
+    setInlineEditName(category.name);
+    setInlineEditType(category.type as 'INCOME' | 'EXPENSE' | 'SAVING' | 'INVESTMENT');
+  };
+
+  const handleSaveInlineEdit = async () => {
+    if (!inlineEditCategoryId || !inlineEditName.trim()) return;
+    
+    try {
+      console.log('Updating category with data:', {
+        id: inlineEditCategoryId,
+        name: inlineEditName.trim(),
+        type: inlineEditType
+      });
+      
+      await categoryService.update(inlineEditCategoryId, {
+        name: inlineEditName.trim(),
+        type: inlineEditType
+      });
+      
+      // Refresh categories
+      fetchCategories();
+      
+      // Reset inline edit state
+      setInlineEditCategoryId(null);
+      setInlineEditName('');
+      
+      showSnackbar('Category updated successfully', 'success');
+    } catch (error: any) {
+      console.error('Failed to update category:', error);
+      
+      // Show more detailed error message if available
+      const errorMessage = error.response?.data?.message || 'Failed to update category';
+      showSnackbar(errorMessage, 'error');
+    }
+  };
+
+  const handleCancelInlineEdit = () => {
+    setInlineEditCategoryId(null);
+    setInlineEditName('');
+  };
+
+  const filteredCategories = useMemo(() => {
+    if (!categoryFilter) return categories;
+    
+    return categories.filter(category => 
+      category.name.toLowerCase().includes(categoryFilter.toLowerCase()) ||
+      category.type.toLowerCase().includes(categoryFilter.toLowerCase())
+    );
+  }, [categories, categoryFilter]);
+
+  // Add this helper function to determine the chip color based on category type
+  const getCategoryChipColor = (type: string) => {
+    switch (type) {
+      case 'INCOME':
+        return 'success';
+      case 'SAVING':
+        return 'info';
+      case 'INVESTMENT':
+        return 'secondary';
+      case 'EXPENSE':
+      default:
+        return 'error';
+    }
+  };
+
+  // Add this helper function for transaction type icons
+  const getTransactionTypeIcon = (type: string) => {
+    switch (type) {
+      case 'INCOME':
+        return '↑';
+      case 'SAVING':
+        return '→';
+      case 'INVESTMENT':
+        return '⟳';
+      case 'EXPENSE':
+      default:
+        return '↓';
+    }
+  };
+
+  // Add a type guard function to check if category is a CategoryObject
+  const isCategoryObject = (category: string | CategoryObject): category is CategoryObject => {
+    return typeof category === 'object' && category !== null && 'id' in category;
+  };
 
   return (
     <Box sx={{ p: 3 }}>
@@ -502,6 +717,23 @@ const Transactions: React.FC = () => {
           >
             Add Transaction
           </Button>
+          <Button
+            variant="outlined"
+            startIcon={<CategoryIcon />}
+            onClick={() => setCategoryDialogOpen(true)}
+            sx={{ ml: 1 }}
+          >
+            Manage Categories
+          </Button>
+          <Button
+            variant="outlined"
+            startIcon={<EditIcon />}
+            onClick={handleBulkEditOpen}
+            disabled={selectedTransactions.length === 0}
+            sx={{ ml: 1 }}
+          >
+            Bulk Edit ({selectedTransactions.length})
+          </Button>
         </Box>
       </Box>
       
@@ -547,7 +779,7 @@ const Transactions: React.FC = () => {
                 </TableHead>
                 <TableBody>
                   {transactions.map((transaction) => {
-                    const isItemSelected = isSelectedTransaction(transaction.id);
+                    const isItemSelected = selectedTransactions.includes(transaction.id);
                     
                     return (
                       <TableRow
@@ -558,14 +790,14 @@ const Transactions: React.FC = () => {
                         <TableCell padding="checkbox">
                           <Checkbox
                             checked={isItemSelected}
-                            onClick={() => handleSelectTransaction(transaction.id)}
+                            onChange={(event) => handleSelectTransaction(transaction.id, event.target.checked)}
                           />
                         </TableCell>
                         <TableCell>{new Date(transaction.date).toLocaleDateString()}</TableCell>
                         <TableCell>{transaction.description}</TableCell>
                         <TableCell>
                           <Chip 
-                            label={transaction.category} 
+                            label={getCategoryName(transaction.category)} 
                             size="small"
                             sx={{ 
                               bgcolor: 'rgba(0, 0, 0, 0.08)',
@@ -574,10 +806,10 @@ const Transactions: React.FC = () => {
                           />
                         </TableCell>
                         <TableCell align="right" sx={{ 
-                          color: transaction.type === 'EXPENSE' ? 'error.main' : 'success.main',
+                          color: getCategoryChipColor(transaction.type),
                           fontWeight: 'medium'
                         }}>
-                          {transaction.type === 'EXPENSE' ? '↓' : '↑'} {formatCurrency(transaction.amount)}
+                          {getTransactionTypeIcon(transaction.type)} {formatCurrency(transaction.amount)}
                         </TableCell>
                         <TableCell>
                           {transaction.accountId && accountMap[transaction.accountId] 
@@ -718,8 +950,8 @@ const Transactions: React.FC = () => {
             setSelectedTransaction(undefined);
           }}
           onSubmit={selectedTransaction 
-            ? (data: any) => handleEdit(selectedTransaction.id, data)
-            : handleAdd
+            ? (data: any) => handleEdit(data)
+            : handleSubmit
           }
           transaction={selectedTransaction}
           accounts={accounts}
@@ -802,7 +1034,7 @@ const Transactions: React.FC = () => {
         <DialogContent>
           <TransactionForm
             initialData={editFormData}
-            onSubmit={handleSaveEdit}
+            onSubmit={handleEdit}
             onCancel={() => {
               setIsEditDialogOpen(false);
               setCurrentTransactionId(null);
@@ -821,6 +1053,391 @@ const Transactions: React.FC = () => {
         <DialogActions>
           <Button onClick={() => setIsDeleteDialogOpen(false)}>Cancel</Button>
           <Button onClick={confirmDeleteTransaction} color="error">Delete</Button>
+        </DialogActions>
+      </Dialog>
+      
+      <Dialog
+        open={categoryDialogOpen}
+        onClose={() => {
+          setCategoryDialogOpen(false);
+          setCategoryToEdit(null);
+          setNewCategoryName('');
+        }}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>
+          Manage Transaction Categories
+          <IconButton
+            aria-label="close"
+            onClick={() => {
+              setCategoryDialogOpen(false);
+              setCategoryToEdit(null);
+              setNewCategoryName('');
+            }}
+            sx={{
+              position: 'absolute',
+              right: 8,
+              top: 8,
+            }}
+          >
+            <CloseIcon />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent>
+          <Box sx={{ mb: 3, mt: 1 }}>
+            <Typography variant="h6" gutterBottom>
+              {categoryToEdit ? 'Edit Category' : 'Add New Category'}
+            </Typography>
+            <Grid container spacing={2} alignItems="center">
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  label="Category Name"
+                  value={newCategoryName}
+                  onChange={(e) => setNewCategoryName(e.target.value)}
+                  variant="outlined"
+                />
+              </Grid>
+              <Grid item xs={12} sm={3}>
+                <TextField
+                  select
+                  fullWidth
+                  label="Type"
+                  value={newCategoryType}
+                  onChange={(e) => setNewCategoryType(e.target.value as 'INCOME' | 'EXPENSE' | 'SAVING' | 'INVESTMENT')}
+                  variant="outlined"
+                >
+                  <MenuItem value="INCOME">Income</MenuItem>
+                  <MenuItem value="EXPENSE">Expense</MenuItem>
+                  <MenuItem value="SAVING">Saving</MenuItem>
+                  <MenuItem value="INVESTMENT">Investment</MenuItem>
+                </TextField>
+              </Grid>
+              <Grid item xs={12} sm={3}>
+                <Button
+                  variant="contained"
+                  color="primary"
+                  onClick={categoryToEdit ? handleUpdateCategory : handleAddCategory}
+                  disabled={!newCategoryName.trim()}
+                  fullWidth
+                >
+                  {categoryToEdit ? 'Update' : 'Add'}
+                </Button>
+              </Grid>
+            </Grid>
+          </Box>
+          
+          <Divider sx={{ my: 3 }} />
+          
+          <Typography variant="h6" gutterBottom>
+            Existing Categories
+          </Typography>
+          
+          <Box sx={{ mb: 3 }}>
+            <TextField
+              fullWidth
+              label="Filter Categories"
+              value={categoryFilter}
+              onChange={(e) => setCategoryFilter(e.target.value)}
+              placeholder="Search by name or type..."
+              variant="outlined"
+              size="small"
+              sx={{ mb: 2 }}
+              InputProps={{
+                endAdornment: categoryFilter ? (
+                  <IconButton 
+                    size="small" 
+                    onClick={() => setCategoryFilter('')}
+                    edge="end"
+                  >
+                    <CloseIcon fontSize="small" />
+                  </IconButton>
+                ) : null
+              }}
+            />
+            
+            <TableContainer component={Paper} variant="outlined">
+              <Table>
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Name</TableCell>
+                    <TableCell>Type</TableCell>
+                    <TableCell>Default</TableCell>
+                    <TableCell align="right">Actions</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {filteredCategories.map((category) => (
+                    <TableRow key={category.id}>
+                      <TableCell>
+                        {inlineEditCategoryId === category.id ? (
+                          <TextField
+                            fullWidth
+                            value={inlineEditName}
+                            onChange={(e) => setInlineEditName(e.target.value)}
+                            size="small"
+                            autoFocus
+                          />
+                        ) : (
+                          category.name
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {inlineEditCategoryId === category.id ? (
+                          <TextField
+                            select
+                            fullWidth
+                            value={inlineEditType}
+                            onChange={(e) => setInlineEditType(e.target.value as 'INCOME' | 'EXPENSE' | 'SAVING' | 'INVESTMENT')}
+                            size="small"
+                          >
+                            <MenuItem value="INCOME">Income</MenuItem>
+                            <MenuItem value="EXPENSE">Expense</MenuItem>
+                            <MenuItem value="SAVING">Saving</MenuItem>
+                            <MenuItem value="INVESTMENT">Investment</MenuItem>
+                          </TextField>
+                        ) : (
+                          <Chip 
+                            label={category.type} 
+                            color={getCategoryChipColor(category.type)}
+                            size="small"
+                          />
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {category.isDefault ? (
+                          <Chip label="Default" size="small" color="primary" />
+                        ) : (
+                          <Chip label="Custom" size="small" variant="outlined" />
+                        )}
+                      </TableCell>
+                      <TableCell align="right">
+                        {inlineEditCategoryId === category.id ? (
+                          <>
+                            <IconButton
+                              onClick={handleSaveInlineEdit}
+                              size="small"
+                              color="primary"
+                            >
+                              <CheckIcon fontSize="small" />
+                            </IconButton>
+                            <IconButton
+                              onClick={handleCancelInlineEdit}
+                              size="small"
+                              color="default"
+                            >
+                              <CloseIcon fontSize="small" />
+                            </IconButton>
+                          </>
+                        ) : (
+                          <>
+                            <IconButton
+                              onClick={() => handleStartInlineEdit(category)}
+                              size="small"
+                              color="primary"
+                            >
+                              <EditIcon fontSize="small" />
+                            </IconButton>
+                            <IconButton
+                              onClick={() => handleDeleteCategoryClick(category)}
+                              size="small"
+                              color="error"
+                              disabled={category.isDefault}
+                            >
+                              <DeleteForeverIcon fontSize="small" />
+                            </IconButton>
+                          </>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  {filteredCategories.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={4} align="center">
+                        No categories found matching your filter.
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          </Box>
+        </DialogContent>
+      </Dialog>
+      
+      <Dialog
+        open={categoryDeleteDialogOpen}
+        onClose={() => {
+          setCategoryDeleteDialogOpen(false);
+          setCategoryDeleteError(null);
+        }}
+      >
+        <DialogTitle>Delete Category</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            Are you sure you want to delete the category "{categoryToDelete?.name}"?
+            {categoryDeleteError && (
+              <Alert severity="error" sx={{ mt: 2 }}>
+                {categoryDeleteError}
+              </Alert>
+            )}
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button 
+            onClick={() => {
+              setCategoryDeleteDialogOpen(false);
+              setCategoryDeleteError(null);
+            }}
+          >
+            Cancel
+          </Button>
+          <Button 
+            onClick={handleDeleteCategory} 
+            color="error"
+            disabled={!!categoryDeleteError}
+          >
+            Delete
+          </Button>
+        </DialogActions>
+      </Dialog>
+      
+      <Dialog
+        open={bulkEditDialogOpen}
+        onClose={handleBulkEditClose}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>
+          Bulk Edit {selectedTransactions.length} Transactions
+        </DialogTitle>
+        <DialogContent>
+          <DialogContentText sx={{ mb: 2 }}>
+            Only fields you modify will be updated. Leave fields blank to keep their current values.
+          </DialogContentText>
+          
+          <Grid container spacing={2}>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                select
+                fullWidth
+                label="Category"
+                value={bulkEditData.category ? (isCategoryObject(bulkEditData.category) ? bulkEditData.category.id : '') : ''}
+                onChange={(e) => {
+                  const categoryId = e.target.value;
+                  if (!categoryId) {
+                    const { category, ...rest } = bulkEditData;
+                    setBulkEditData(rest);
+                    return;
+                  }
+                  
+                  const selectedCategory = categories.find(c => c.id === +categoryId);
+                  if (selectedCategory) {
+                    handleBulkEditChange('category', selectedCategory);
+                  }
+                }}
+                variant="outlined"
+              >
+                <MenuItem value="">
+                  <em>No change</em>
+                </MenuItem>
+                {categories.map((category) => (
+                  <MenuItem key={category.id} value={category.id}>
+                    {category.name}
+                  </MenuItem>
+                ))}
+              </TextField>
+            </Grid>
+            
+            <Grid item xs={12} sm={6}>
+              <TextField
+                select
+                fullWidth
+                label="Type"
+                value={bulkEditData.type || ''}
+                onChange={(e) => {
+                  const type = e.target.value;
+                  if (!type) {
+                    const { type, ...rest } = bulkEditData;
+                    setBulkEditData(rest);
+                    return;
+                  }
+                  handleBulkEditChange('type', type);
+                }}
+                variant="outlined"
+              >
+                <MenuItem value="">
+                  <em>No change</em>
+                </MenuItem>
+                <MenuItem value="INCOME">Income</MenuItem>
+                <MenuItem value="EXPENSE">Expense</MenuItem>
+                <MenuItem value="SAVING">Saving</MenuItem>
+                <MenuItem value="INVESTMENT">Investment</MenuItem>
+              </TextField>
+            </Grid>
+            
+            <Grid item xs={12} sm={6}>
+              <TextField
+                select
+                fullWidth
+                label="Account"
+                value={bulkEditData.accountId || ''}
+                onChange={(e) => {
+                  const accountId = e.target.value;
+                  if (!accountId) {
+                    const { accountId, ...rest } = bulkEditData;
+                    setBulkEditData(rest);
+                    return;
+                  }
+                  handleBulkEditChange('accountId', +accountId);
+                }}
+                variant="outlined"
+              >
+                <MenuItem value="">
+                  <em>No change</em>
+                </MenuItem>
+                {accounts.map((account) => (
+                  <MenuItem key={account.id} value={account.id}>
+                    {account.name}
+                  </MenuItem>
+                ))}
+              </TextField>
+            </Grid>
+            
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Date"
+                type="date"
+                value={bulkEditData.date || ''}
+                onChange={(e) => {
+                  const date = e.target.value;
+                  if (!date) {
+                    const { date, ...rest } = bulkEditData;
+                    setBulkEditData(rest);
+                    return;
+                  }
+                  handleBulkEditChange('date', date);
+                }}
+                InputLabelProps={{
+                  shrink: true,
+                }}
+                variant="outlined"
+              />
+            </Grid>
+          </Grid>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleBulkEditClose}>Cancel</Button>
+          <Button 
+            onClick={handleBulkEditSubmit} 
+            variant="contained" 
+            color="primary"
+            disabled={Object.keys(bulkEditData).length === 0}
+          >
+            Update {selectedTransactions.length} Transactions
+          </Button>
         </DialogActions>
       </Dialog>
     </Box>

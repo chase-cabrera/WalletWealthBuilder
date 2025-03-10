@@ -79,7 +79,7 @@ export class TransactionsController {
     response.header('Access-Control-Expose-Headers', 'X-Total-Count, X-Page, X-Page-Size, X-Total-Pages');
     
     // Return the transactions
-    return response.json(result.data);
+    return response.json(result.transactions);
   }
 
   @Get('categories')

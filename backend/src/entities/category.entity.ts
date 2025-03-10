@@ -22,7 +22,7 @@ export class Category {
   @ManyToOne(() => User, user => user.categories)
   user: User;
 
-  @OneToMany(() => Transaction, transaction => transaction.categoryObj, { nullable: true })
+  @OneToMany(() => Transaction, transaction => transaction.category, { nullable: true })
   transactions: Transaction[];
 
   @CreateDateColumn()

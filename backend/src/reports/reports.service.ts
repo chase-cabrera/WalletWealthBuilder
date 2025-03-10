@@ -16,14 +16,14 @@ export class ReportsService {
     const startDate = startOfMonth(subMonths(today, months - 1));
     const endDate = endOfMonth(today);
 
-    const transactions = await this.transactionRepository.find({
-      where: {
-        user: { id: userId },
-        type: 'EXPENSE',
-        date: Between(startDate, endDate),
-      },
-      relations: ['user'],
-    });
+    // Use query builder to avoid type issues
+    const transactions = await this.transactionRepository
+      .createQueryBuilder('transaction')
+      .where('transaction.user.id = :userId', { userId })
+      .andWhere('transaction.type = :type', { type: 'EXPENSE' })
+      .andWhere('transaction.date >= :startDate', { startDate: startDate.toISOString().split('T')[0] })
+      .andWhere('transaction.date <= :endDate', { endDate: endDate.toISOString().split('T')[0] })
+      .getMany();
 
     // Group by month and category
     const monthlyData = {};
@@ -51,13 +51,13 @@ export class ReportsService {
     const startDate = startOfMonth(subMonths(today, months - 1));
     const endDate = endOfMonth(today);
 
-    const transactions = await this.transactionRepository.find({
-      where: {
-        user: { id: userId },
-        date: Between(startDate, endDate),
-      },
-      relations: ['user'],
-    });
+    // Use query builder to avoid type issues
+    const transactions = await this.transactionRepository
+      .createQueryBuilder('transaction')
+      .where('transaction.user.id = :userId', { userId })
+      .andWhere('transaction.date >= :startDate', { startDate: startDate.toISOString().split('T')[0] })
+      .andWhere('transaction.date <= :endDate', { endDate: endDate.toISOString().split('T')[0] })
+      .getMany();
 
     // Group by month and type
     const monthlyData = {};
@@ -81,18 +81,16 @@ export class ReportsService {
     const startDate = startOfMonth(subMonths(today, months - 1));
     const endDate = endOfMonth(today);
 
+    // Use query builder to avoid type issues
+    const transactions = await this.transactionRepository
+      .createQueryBuilder('transaction')
+      .leftJoinAndSelect('transaction.account', 'account')
+      .where('transaction.user.id = :userId', { userId })
+      .andWhere('transaction.date >= :startDate', { startDate: startDate.toISOString().split('T')[0] })
+      .andWhere('transaction.date <= :endDate', { endDate: endDate.toISOString().split('T')[0] })
+      .getMany();
+
     console.log(`Calculating net worth trend for user ${userId} from ${startDate} to ${endDate}`);
-
-    // Get all transactions for the period
-    const transactions = await this.transactionRepository.find({
-      where: {
-        user: { id: userId },
-        date: Between(startDate, endDate),
-      },
-      relations: ['user', 'account'],
-    });
-
-    console.log(`Found ${transactions.length} transactions for the period`);
 
     // Get current account balances
     const accountsQuery = this.transactionRepository.manager.query(

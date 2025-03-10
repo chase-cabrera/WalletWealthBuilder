@@ -2,6 +2,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { Box, Typography, useTheme, CircularProgress, Chip, Stack, useMediaQuery } from '@mui/material';
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip, Sector } from 'recharts';
 import { Transaction } from '../../services/transactionService';
+import { CategoryObject } from '../../types/Transaction';
 import transactionService from '../../services/transactionService';
 import categoryService from '../../services/categoryService';
 
@@ -83,24 +84,34 @@ const SpendingByCategoryChart: React.FC<SpendingByCategoryChartProps> = ({ trans
       return;
     }
     
-    // Group transactions by category and sum amounts
-    const categoryMap = expenseTransactions.reduce((acc, transaction) => {
-      // Use the transaction category or default to 'Uncategorized'
-      const category = transaction.category || 'Uncategorized';
-      const amount = Math.abs(transaction.amount);
+    // Add a helper function to get category name
+    const getCategoryName = (category: string | CategoryObject | undefined): string => {
+      if (!category) return 'Uncategorized';
       
-      if (!acc[category]) {
-        acc[category] = 0;
+      if (typeof category === 'string') {
+        return category;
       }
       
-      acc[category] += amount;
+      return category.name;
+    };
+    
+    // Then update the spending calculation
+    const spendingByCategory = expenseTransactions.reduce((acc, transaction) => {
+      const categoryName = getCategoryName(transaction.category);
+      const amount = Math.abs(transaction.amount);
+      
+      if (!acc[categoryName]) {
+        acc[categoryName] = 0;
+      }
+      
+      acc[categoryName] += amount;
       return acc;
     }, {} as Record<string, number>);
     
-    console.log("Category map:", categoryMap);
+    console.log("Category map:", spendingByCategory);
     
     // Convert to array format for the pie chart
-    const data = Object.entries(categoryMap).map(([name, value]) => ({
+    const data = Object.entries(spendingByCategory).map(([name, value]) => ({
       name,
       value: parseFloat(value.toFixed(2))
     }));

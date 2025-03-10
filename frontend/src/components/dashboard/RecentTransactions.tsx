@@ -27,6 +27,7 @@ import {
   Category as DefaultIcon
 } from '@mui/icons-material';
 import { Transaction } from '../../services/transactionService';
+import { CategoryObject } from '../../types/Transaction';
 import { format, parseISO } from 'date-fns';
 import { Link } from 'react-router-dom';
 
@@ -97,6 +98,17 @@ const RecentTransactions: React.FC<RecentTransactionsProps> = ({ transactions, a
     return accounts[accountId];
   };
 
+  // Add a helper function to get category name
+  const getCategoryName = (category: string | CategoryObject | undefined): string => {
+    if (!category) return 'Uncategorized';
+    
+    if (typeof category === 'string') {
+      return category;
+    }
+    
+    return category.name;
+  };
+
   if (transactions.length === 0) {
     return (
       <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
@@ -140,7 +152,7 @@ const RecentTransactions: React.FC<RecentTransactionsProps> = ({ transactions, a
                   color: '#fff'
                 }}
               >
-                {getCategoryIcon(transaction.category || 'Default')}
+                {getCategoryIcon(getCategoryName(transaction.category) || 'Default')}
               </Avatar>
             </ListItemAvatar>
             
@@ -163,12 +175,12 @@ const RecentTransactions: React.FC<RecentTransactionsProps> = ({ transactions, a
                 <Box sx={{ display: 'flex', alignItems: 'center', mt: 0.5, justifyContent: 'space-between' }}>
                   <Box sx={{ display: 'flex', alignItems: 'center' }}>
                     <Chip 
-                      label={transaction.category || 'Uncategorized'} 
+                      label={getCategoryName(transaction.category)} 
                       size="small" 
                       sx={{ 
                         mr: 1, 
-                        backgroundColor: getCategoryColor(transaction.category || ''),
-                        color: theme.palette.getContrastText(getCategoryColor(transaction.category || '')),
+                        backgroundColor: getCategoryColor(getCategoryName(transaction.category)),
+                        color: theme.palette.getContrastText(getCategoryColor(getCategoryName(transaction.category))),
                         fontWeight: 'medium',
                         fontSize: '0.75rem'
                       }} 

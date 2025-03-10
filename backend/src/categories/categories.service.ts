@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Category } from '../entities/category.entity';
@@ -87,7 +87,22 @@ export class CategoriesService {
   }
 
   async remove(id: number, userId: number): Promise<void> {
+    // First check if there are any transactions using this category
     const category = await this.findOne(id, userId);
+    
+    // Check if there are any transactions using this category
+    const transactionsWithCategory = await this.categoryRepository
+      .createQueryBuilder('category')
+      .leftJoin('category.transactions', 'transaction')
+      .where('category.id = :id', { id })
+      .andWhere('category.userId = :userId', { userId })
+      .getCount();
+    
+    if (transactionsWithCategory > 0) {
+      throw new ConflictException(`Cannot delete category with ID ${id} because it has ${transactionsWithCategory} associated transactions.`);
+    }
+    
+    // If no transactions are using this category, proceed with deletion
     await this.categoryRepository.remove(category);
   }
 } 

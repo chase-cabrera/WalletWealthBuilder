@@ -14,6 +14,8 @@ import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import { GetUser } from '../auth/decorators/get-user.decorator';
+import { User } from '../auth/user.entity';
 
 @ApiTags('categories')
 @Controller('categories')
@@ -52,8 +54,13 @@ export class CategoriesController {
   @ApiOperation({ summary: 'Update a category' })
   @ApiResponse({ status: 200, description: 'The category has been successfully updated.' })
   @ApiResponse({ status: 404, description: 'Category not found.' })
-  update(@Param('id') id: string, @Body() updateCategoryDto: UpdateCategoryDto, @Request() req) {
+  async update(
+    @Param('id') id: string,
+    @Body() updateCategoryDto: UpdateCategoryDto,
+    @Request() req
+  ) {
     const user = req.user;
+    console.log('Updating category with data:', updateCategoryDto);
     return this.categoriesService.update(+id, updateCategoryDto, user.id);
   }
 

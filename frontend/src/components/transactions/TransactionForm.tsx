@@ -32,6 +32,22 @@ import { Transaction, CreateTransactionDto, Category } from '../../services/tran
 import { format, parseISO } from 'date-fns';
 import { Account } from '../../services/accountService';
 import categoryService from '../../services/categoryService';
+import { CategoryObject } from '../../types/Transaction';
+
+// Helper function to safely get category name
+const getCategoryName = (category: any): string => {
+  if (!category) return '';
+  
+  if (typeof category === 'string') {
+    return category;
+  }
+  
+  if (typeof category === 'object' && category !== null && 'name' in category) {
+    return category.name;
+  }
+  
+  return '';
+};
 
 interface TransactionFormProps {
   open?: boolean;
@@ -65,7 +81,10 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
     accountId: accounts.length > 0 ? accounts[0].id : undefined,
   };
   
-  const [formData, setFormData] = useState<Partial<Transaction>>(data);
+  const [formData, setFormData] = useState<Partial<Transaction>>({
+    ...data,
+    category: getCategoryName(data.category),
+  });
   
   const theme = useTheme();
   const fullScreen = useMediaQuery(theme.breakpoints.down('sm'));
@@ -88,7 +107,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
       note: data.note ?? '',
       date: data.date ?? format(new Date(), 'yyyy-MM-dd'),
       type: data.type ?? 'EXPENSE',
-      category: data.category ?? '',
+      category: getCategoryName(data.category),
       accountId: data.accountId ?? undefined,
     });
     
@@ -393,9 +412,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
                   <TextField
                     select
                     label="Category"
-                    value={formData.category && categories.some(c => c.name === formData.category) 
-                      ? formData.category 
-                      : ''}
+                    value={getCategoryName(formData.category)}
                     onChange={(e) => setFormData({ ...formData, category: e.target.value })}
                     fullWidth
                     sx={{ mb: 3 }}

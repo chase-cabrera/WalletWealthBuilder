@@ -4,54 +4,66 @@ import { Category } from './transactionService';
 export interface CreateCategoryDto {
   name: string;
   description?: string;
-  type: 'INCOME' | 'EXPENSE';
+  type: 'INCOME' | 'EXPENSE' | 'SAVING' | 'INVESTMENT';
   isDefault?: boolean;
 }
 
 export interface UpdateCategoryDto {
   name?: string;
   description?: string;
-  type?: 'INCOME' | 'EXPENSE';
+  type?: 'INCOME' | 'EXPENSE' | 'SAVING' | 'INVESTMENT';
   isDefault?: boolean;
 }
 
-// Get all categories
-export const getCategories = async () => {
+const getAll = async (): Promise<Category[]> => {
   const response = await axiosInstance.get('/categories');
   return response.data;
 };
 
-// Get a single category by ID
-export const getCategory = async (id: number) => {
+const getById = async (id: number): Promise<Category> => {
   const response = await axiosInstance.get(`/categories/${id}`);
   return response.data;
 };
 
-// Create a new category
-export const createCategory = async (categoryData: CreateCategoryDto) => {
+const create = async (categoryData: CreateCategoryDto): Promise<Category> => {
   const response = await axiosInstance.post('/categories', categoryData);
   return response.data;
 };
 
-// Update an existing category
-export const updateCategory = async (id: number, categoryData: UpdateCategoryDto) => {
-  const response = await axiosInstance.patch(`/categories/${id}`, categoryData);
+const update = async (id: number, categoryData: UpdateCategoryDto): Promise<Category> => {
+  const validData: UpdateCategoryDto = {};
+  
+  if (categoryData.name !== undefined && categoryData.name.trim() !== '') {
+    validData.name = categoryData.name.trim();
+  }
+  
+  if (categoryData.type !== undefined) {
+    validData.type = categoryData.type;
+  }
+  
+  if (categoryData.description !== undefined) {
+    validData.description = categoryData.description;
+  }
+  
+  if (categoryData.isDefault !== undefined) {
+    validData.isDefault = categoryData.isDefault;
+  }
+  
+  console.log('Sending category update:', validData);
+  const response = await axiosInstance.patch(`/categories/${id}`, validData);
   return response.data;
 };
 
-// Delete a category
-export const deleteCategory = async (id: number) => {
-  const response = await axiosInstance.delete(`/categories/${id}`);
-  return response.data;
+const deleteCategory = async (id: number): Promise<void> => {
+  await axiosInstance.delete(`/categories/${id}`);
 };
 
-// Default export with all methods
 const categoryService = {
-  getAll: getCategories,
-  getById: getCategory,
-  create: createCategory,
-  update: updateCategory,
-  delete: deleteCategory,
+  getAll,
+  getById,
+  create,
+  update,
+  delete: deleteCategory
 };
 
 export default categoryService; 

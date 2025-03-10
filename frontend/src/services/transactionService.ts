@@ -1,6 +1,7 @@
 import axiosInstance from './axiosConfig';
 import axios from 'axios';
 import { API_URL } from '../config';
+import { CategoryObject } from '../types/Transaction';
 
 // Add the missing type definitions
 export interface Category {
@@ -20,15 +21,16 @@ export interface Transaction {
   vendor?: string;
   purchaser?: string;
   note?: string;
-  type: 'INCOME' | 'EXPENSE';
-  category: string;
+  type: string;
+  category?: string | CategoryObject;
+  categoryId?: number;
   date: string;
-  accountId?: number;
   account?: {
     id: number;
     name: string;
     balance: number;
   };
+  accountId?: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -41,6 +43,7 @@ export interface CreateTransactionDto {
   note: string;
   type: 'INCOME' | 'EXPENSE';
   category: string;
+  categoryId?: number;
   date: string;
   accountId?: number;
 }
@@ -229,4 +232,6 @@ export const getCategories = async (): Promise<string[]> => {
   } catch (error) {
     return CATEGORIES;
   }
-}; 
+};
+
+export type { CategoryObject }; 

@@ -42,7 +42,7 @@ import {
   Note as NoteIcon,
   SwapVert as SwapVertIcon,
 } from '@mui/icons-material';
-import { Transaction } from '../../services/transactionService';
+import { Transaction, CategoryObject } from '../../types/Transaction';
 import { format, parseISO } from 'date-fns';
 
 interface TransactionRowProps {
@@ -67,6 +67,9 @@ interface TransactionListProps {
   onBatchUpdate?: (ids: number[], updates: Partial<Transaction>) => void;
   accounts: Record<number, string>;
   hideActionDropdown?: boolean;
+  selectedTransactions: number[];
+  onSelectTransaction: (id: number, isSelected: boolean) => void;
+  onSelectAll: (isSelected: boolean) => void;
 }
 
 const CATEGORIES = [
@@ -226,10 +229,12 @@ const TransactionList: React.FC<TransactionListProps> = ({
   onBatchUpdate,
   accounts,
   hideActionDropdown = false,
+  selectedTransactions,
+  onSelectTransaction,
+  onSelectAll,
 }) => {
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
-  const [selected, setSelected] = useState<number[]>([]);
   const [batchMenuAnchorEl, setBatchMenuAnchorEl] = useState<null | HTMLElement>(null);
   const [categoryMenuAnchorEl, setCategoryMenuAnchorEl] = useState<null | HTMLElement>(null);
   const [accountMenuAnchorEl, setAccountMenuAnchorEl] = useState<null | HTMLElement>(null);
@@ -275,40 +280,40 @@ const TransactionList: React.FC<TransactionListProps> = ({
   const handleSelectAllClick = (event: React.ChangeEvent<HTMLInputElement>) => {
     if (event.target.checked) {
       const newSelected = transactions.map(t => t.id);
-      setSelected(newSelected);
+      onSelectAll(true);
       return;
     }
-    setSelected([]);
+    onSelectAll(false);
   };
 
   const handleSelectClick = (event: React.MouseEvent<unknown>, id: number) => {
     event.stopPropagation();
-    const selectedIndex = selected.indexOf(id);
+    const selectedIndex = selectedTransactions.indexOf(id);
     let newSelected: number[] = [];
 
     if (selectedIndex === -1) {
-      newSelected = [...selected, id];
+      newSelected = [...selectedTransactions, id];
     } else {
-      newSelected = selected.filter(itemId => itemId !== id);
+      newSelected = selectedTransactions.filter(itemId => itemId !== id);
     }
 
-    setSelected(newSelected);
+    onSelectTransaction(id, selectedIndex === -1);
   };
 
   const handleCheckboxChange = (id: number) => {
-    const selectedIndex = selected.indexOf(id);
+    const selectedIndex = selectedTransactions.indexOf(id);
     let newSelected: number[] = [];
 
     if (selectedIndex === -1) {
-      newSelected = [...selected, id];
+      newSelected = [...selectedTransactions, id];
     } else {
-      newSelected = selected.filter(itemId => itemId !== id);
+      newSelected = selectedTransactions.filter(itemId => itemId !== id);
     }
 
-    setSelected(newSelected);
+    onSelectTransaction(id, selectedIndex === -1);
   };
 
-  const isSelected = (id: number) => selected.indexOf(id) !== -1;
+  const isSelected = (id: number) => selectedTransactions.indexOf(id) !== -1;
 
   const handleBatchMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
     setBatchMenuAnchorEl(event.currentTarget);
@@ -337,25 +342,25 @@ const TransactionList: React.FC<TransactionListProps> = ({
   };
 
   const handleUpdateCategory = (category: string) => {
-    if (onBatchUpdate && selected.length > 0) {
-      onBatchUpdate(selected, { category });
+    if (onBatchUpdate && selectedTransactions.length > 0) {
+      onBatchUpdate(selectedTransactions, { category });
     }
     handleCategoryMenuClose();
   };
 
   const handleUpdateAccount = (accountId: number | null) => {
-    if (onBatchUpdate && selected.length > 0) {
-      onBatchUpdate(selected, { accountId: accountId || undefined });
+    if (onBatchUpdate && selectedTransactions.length > 0) {
+      onBatchUpdate(selectedTransactions, { accountId: accountId || undefined });
     }
     handleAccountMenuClose();
   };
 
   const handleBatchDelete = () => {
-    if (selected.length > 0) {
-      if (window.confirm(`Are you sure you want to delete ${selected.length} transactions?`)) {
-        Promise.all(selected.map(id => onDelete(id)))
+    if (selectedTransactions.length > 0) {
+      if (window.confirm(`Are you sure you want to delete ${selectedTransactions.length} transactions?`)) {
+        Promise.all(selectedTransactions.map(id => onDelete(id)))
           .then(() => {
-            setSelected([]);
+            onSelectAll(false);
           })
           .catch(error => {
             console.error('Failed to delete transactions:', error);
@@ -374,23 +379,26 @@ const TransactionList: React.FC<TransactionListProps> = ({
 
   // Function to determine if a transaction should be displayed as positive
   const shouldDisplayAsPositive = (transaction: Transaction) => {
-    // Check for savings-related keywords in description or category
-    const savingsKeywords = ['saving', 'investment', 'deposit', 'transfer to', '401k', 'ira', 'retirement'];
-    
     // Check description
     const descriptionMatch = transaction.description && 
-      savingsKeywords.some(keyword => 
-        transaction.description.toLowerCase().includes(keyword)
-      );
+      transaction.description.toLowerCase().includes('saving');
     
-    // Check category
-    const categoryMatch = transaction.category && 
-      (transaction.category.toLowerCase().includes('saving') || 
-       transaction.category.toLowerCase().includes('investment'));
+    // Check category - handle both string and object cases
+    let categoryMatch = false;
+    if (transaction.category) {
+      if (typeof transaction.category === 'string') {
+        categoryMatch = 
+          transaction.category.toLowerCase().includes('saving') || 
+          transaction.category.toLowerCase().includes('investment');
+      } else if (isCategoryObject(transaction.category)) {
+        categoryMatch = 
+          transaction.category.name.toLowerCase().includes('saving') || 
+          transaction.category.name.toLowerCase().includes('investment');
+      }
+    }
     
     // Only return true if it's a savings transaction AND it's negative
     const result = (descriptionMatch || categoryMatch) && transaction.amount < 0;
-    
     
     return result;
   };
@@ -447,23 +455,37 @@ const TransactionList: React.FC<TransactionListProps> = ({
     return <ExpenseIcon fontSize="small" sx={{ mr: 0.5 }} />;
   };
 
+  // Type guard function
+  const isCategoryObject = (category: any): category is CategoryObject => {
+    return typeof category === 'object' && category !== null && 'name' in category;
+  };
+
   const getCategoryDisplayName = (transaction: Transaction) => {
-    // Just use the category string directly
-    if (transaction.category) {
+    // Check if category exists
+    if (!transaction.category) return 'Uncategorized';
+    
+    // If it's a string, return it directly
+    if (typeof transaction.category === 'string') {
       return transaction.category;
     }
+    
+    // Use our type guard
+    if (isCategoryObject(transaction.category)) {
+      return transaction.category.name;
+    }
+    
     // Fallback
     return 'Uncategorized';
   };
 
-  // Add a new handler for toggling transaction signs
+  // Fix the handleToggleTransactionSigns function
   const handleToggleTransactionSigns = () => {
-    if (onBatchUpdate && selected.length > 0) {
+    if (onBatchUpdate && selectedTransactions.length > 0) {
       // Get the selected transactions
-      const selectedTransactions = transactions.filter(t => selected.includes(t.id));
+      const selectedTxs = transactions.filter(t => selectedTransactions.includes(t.id));
       
       // Process each transaction to toggle its sign
-      Promise.all(selectedTransactions.map(transaction => {
+      Promise.all(selectedTxs.map(transaction => {
         // Create a new amount with the opposite sign
         const newAmount = -transaction.amount;
         
@@ -477,7 +499,7 @@ const TransactionList: React.FC<TransactionListProps> = ({
         });
       }))
       .then(() => {
-        setSelected([]);
+        onSelectAll(false);
       })
       .catch(error => {
         console.error('Failed to toggle transaction signs:', error);
@@ -492,20 +514,20 @@ const TransactionList: React.FC<TransactionListProps> = ({
         sx={{
           pl: { sm: 2 },
           pr: { xs: 1, sm: 1 },
-          ...(selected.length > 0 && {
+          ...(selectedTransactions.length > 0 && {
             bgcolor: (theme) =>
               alpha(theme.palette.primary.main, theme.palette.action.activatedOpacity),
           }),
         }}
       >
-        {selected.length > 0 ? (
+        {selectedTransactions.length > 0 ? (
           <Typography
             sx={{ flex: '1 1 100%' }}
             color="inherit"
             variant="subtitle1"
             component="div"
           >
-            {selected.length} selected
+            {selectedTransactions.length} selected
           </Typography>
         ) : (
           <Typography
@@ -518,7 +540,7 @@ const TransactionList: React.FC<TransactionListProps> = ({
           </Typography>
         )}
 
-        {selected.length > 0 && (
+        {selectedTransactions.length > 0 && (
           <Tooltip title="More actions">
             <Button
               onClick={handleBatchMenuOpen}
@@ -538,18 +560,17 @@ const TransactionList: React.FC<TransactionListProps> = ({
             <TableRow>
               <TableCell padding="checkbox">
                 <Checkbox
-                  indeterminate={selected.length > 0 && selected.length < transactions.length}
-                  checked={transactions.length > 0 && selected.length === transactions.length}
-                  onChange={handleSelectAllClick}
-                  inputProps={{ 'aria-label': 'select all transactions' }}
+                  indeterminate={selectedTransactions.length > 0 && selectedTransactions.length < transactions.length}
+                  checked={transactions.length > 0 && selectedTransactions.length === transactions.length}
+                  onChange={(e) => onSelectAll(e.target.checked)}
                 />
               </TableCell>
               <TableCell>Date</TableCell>
               <TableCell>Description</TableCell>
               <TableCell>Category</TableCell>
-              <TableCell align="right">Amount</TableCell>
               <TableCell>Account</TableCell>
-              <TableCell align="right">Actions</TableCell>
+              <TableCell align="right">Amount</TableCell>
+              <TableCell>Actions</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>

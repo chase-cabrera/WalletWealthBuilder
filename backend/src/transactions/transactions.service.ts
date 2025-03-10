@@ -7,6 +7,24 @@ import { CreateTransactionDto } from './dto/create-transaction.dto';
 import { UpdateTransactionDto } from './dto/update-transaction.dto';
 import { AccountsService } from '../accounts/accounts.service';
 import { CategoriesService } from '../categories/categories.service';
+import { Account } from '../entities/account.entity';
+
+// Define the TransactionQuery interface
+interface TransactionQuery {
+  page?: number;
+  pageSize?: number;
+  startDate?: string;
+  endDate?: string;
+  type?: string;
+  category?: string;
+  minAmount?: number;
+  maxAmount?: number;
+  search?: string;
+  sortBy?: string;
+  sortOrder?: 'ASC' | 'DESC';
+  sortDirection?: string;
+  accountId?: number;
+}
 
 @Injectable()
 export class TransactionsService {
@@ -44,12 +62,13 @@ export class TransactionsService {
 
     // If category is provided, find or create the category
     if (createTransactionDto.category) {
-      const categoryObj = await this.categoriesService.findOrCreate(
+      const category = await this.categoriesService.findOrCreate(
         createTransactionDto.category,
         transaction.type,
         user.id
       );
-      transaction.categoryObj = categoryObj;
+      transaction.category = category;
+      transaction.categoryId = category.id;
     }
 
     return this.transactionRepository.save(transaction);
@@ -64,6 +83,7 @@ export class TransactionsService {
     const queryBuilder = this.transactionRepository
       .createQueryBuilder('transaction')
       .leftJoinAndSelect('transaction.account', 'account')
+      .leftJoinAndSelect('transaction.category', 'category')
       .where('transaction.userId = :userId', { userId });
     
     // Apply filters if provided
@@ -80,7 +100,7 @@ export class TransactionsService {
     }
     
     if (query.category) {
-      queryBuilder.andWhere('transaction.category = :category', { category: query.category });
+      queryBuilder.andWhere('category.name = :category', { category: query.category });
     }
     
     if (query.accountId) {
@@ -97,41 +117,37 @@ export class TransactionsService {
 
     if (query.search) {
       queryBuilder.andWhere(
-        '("transaction"."description" LIKE :search OR "transaction"."category" LIKE :search)',
+        '(transaction.description LIKE :search OR category.name LIKE :search OR transaction.vendor LIKE :search)',
         { search: `%${query.search}%` }
       );
     }
     
     // Order by date descending (newest first) by default, but allow custom sorting
     if (query.sortBy && query.sortDirection) {
-      queryBuilder.orderBy(`transaction.${query.sortBy}`, query.sortDirection.toUpperCase());
+      // Convert to uppercase and ensure it's either ASC or DESC
+      const direction = query.sortDirection.toUpperCase() === 'DESC' ? 'DESC' : 'ASC';
+      queryBuilder.orderBy(`transaction.${query.sortBy}`, direction as 'ASC' | 'DESC');
     } else {
       queryBuilder.orderBy('transaction.date', 'DESC');
     }
     
-    // Get total count before applying pagination
+    // Get total count before pagination
     const total = await queryBuilder.getCount();
     
-    // Apply pagination if provided
-    if (page && limit) {
-      const validPage = isNaN(page) || page < 1 ? 1 : page;
-      const validPageSize = isNaN(limit) || limit < 1 || limit > 1000 ? 50 : limit;
-      
-      const skip = (validPage - 1) * validPageSize;
-      
-      queryBuilder.skip(skip).take(validPageSize);
-    }
+    // Apply pagination
+    const pageSize = query.pageSize || limit;
+    const currentPage = query.page || page;
+    const skip = (currentPage - 1) * pageSize;
     
-    // Make sure to select the account
-    const transactions = await queryBuilder
-      .orderBy('transaction.date', 'DESC')
-      .addOrderBy('transaction.createdAt', 'DESC')
-      .getMany();
+    queryBuilder.skip(skip).take(pageSize);
+    
+    // Execute query
+    const transactions = await queryBuilder.getMany();
     
     return {
       transactions,
       total,
-      pages: Math.ceil(total / limit)
+      pages: Math.ceil(total / pageSize)
     };
   }
 
@@ -209,8 +225,8 @@ export class TransactionsService {
 
   async importFromCSV(csvData: any[], user: User) {
     console.log('Received CSV data:', JSON.stringify(csvData.slice(0, 2)));
-    const importedTransactions = [];
-    const failedTransactions = [];
+    const importedTransactions: Transaction[] = [];
+    const failedTransactions: any[] = [];
     
     for (const item of csvData) {
       try {
@@ -218,7 +234,7 @@ export class TransactionsService {
         console.log('Processing item:', JSON.stringify(item));
         
         // First, check if we have an accountId and find the account
-        let account = null;
+        let account: Account | null = null;
         if (item.accountId) {
           console.log('Found accountId:', item.accountId, 'Type:', typeof item.accountId);
           try {
@@ -229,41 +245,81 @@ export class TransactionsService {
           }
         }
         
-        // Create a new transaction object with better defaults and type handling
-        const transaction = this.transactionRepository.create({
-          date: item.date || new Date().toISOString().split('T')[0],
-          description: item.description || item.memo || 'Imported Transaction',
-          amount: typeof item.amount === 'string' ? parseFloat(item.amount.replace(/[^0-9.-]+/g, '')) : (item.amount || 0),
-          category: item.category || 'Uncategorized',
-          type: item.type || (parseFloat(String(item.amount).replace(/[^0-9.-]+/g, '')) >= 0 ? 'INCOME' : 'EXPENSE'),
-          note: item.note || '',
-          purchaser: item.purchaser || '',
-          user
-        });
+        // Determine transaction type based on amount if not provided
+        const amount = typeof item.amount === 'string' 
+          ? parseFloat(item.amount.replace(/[^0-9.-]+/g, '')) 
+          : (item.amount || 0);
         
-        // Set the account if we found one
+        const type = item.type || (amount >= 0 ? 'INCOME' : 'EXPENSE');
+        
+        // Create transaction without category first
+        const transaction = new Transaction();
+        transaction.date = item.date || new Date().toISOString().split('T')[0];
+        transaction.description = item.description || item.memo || 'Imported Transaction';
+        transaction.amount = Math.abs(amount);
+        transaction.type = type;
+        transaction.note = item.note || '';
+        transaction.vendor = item.vendor || '';
+        transaction.purchaser = item.purchaser || '';
+        transaction.user = user;
+        
+        // Set account if found
         if (account) {
-          // Set both the account relation and the accountId
           transaction.account = account;
           transaction.accountId = account.id;
           
           // Update account balance
           if (transaction.type === 'INCOME') {
-            account.balance += transaction.amount;
+            account.balance += Math.abs(amount);
           } else if (transaction.type === 'EXPENSE') {
-            account.balance -= transaction.amount;
+            account.balance -= Math.abs(amount);
           }
           
           await this.accountsService.update(account.id, { balance: account.balance }, user.id);
-        } else {
-          console.log('No account found for transaction');
         }
         
-        // Save the transaction
-        console.log('Saving transaction:', JSON.stringify(transaction));
+        // Save transaction first to get an ID
         const savedTransaction = await this.transactionRepository.save(transaction);
-        console.log('Saved transaction:', JSON.stringify(savedTransaction));
-        importedTransactions.push(savedTransaction);
+        
+        // Now handle category separately
+        if (item.category) {
+          try {
+            const category = await this.categoriesService.findOrCreate(
+              item.category,
+              type,
+              user.id
+            );
+            
+            console.log(`Found/created category: ${category.name} with ID: ${category.id}`);
+            
+            // Update the transaction with the category ID
+            await this.transactionRepository.update(
+              savedTransaction.id,
+              { categoryId: category.id }
+            );
+            
+            // Reload the transaction to get the updated data
+            const updatedTransaction = await this.transactionRepository.findOne({
+              where: { id: savedTransaction.id },
+              relations: ['category', 'account']
+            });
+            
+            console.log('Updated transaction with category:', JSON.stringify(updatedTransaction));
+            
+            // Add a null check before pushing to the array
+            if (updatedTransaction) {
+              importedTransactions.push(updatedTransaction);
+            } else {
+              // If for some reason we can't find the updated transaction, use the saved one
+              importedTransactions.push(savedTransaction);
+            }
+          } catch (error) {
+            console.error('Error setting category:', error);
+            importedTransactions.push(savedTransaction);
+          }
+        } else {
+          importedTransactions.push(savedTransaction);
+        }
       } catch (error) {
         console.error('Error importing transaction:', error, 'Item:', JSON.stringify(item));
         failedTransactions.push(item);
@@ -279,15 +335,16 @@ export class TransactionsService {
   }
 
   async getUniqueCategories(userId: number): Promise<string[]> {
-    const categories = await this.transactionRepository
-      .createQueryBuilder('transaction')
-      .select('DISTINCT transaction.category', 'category')
-      .where('transaction.userId = :userId', { userId })
+    const categories = await this.transactionRepository.manager
+      .createQueryBuilder()
+      .select('DISTINCT category.name', 'name')
+      .from('categories', 'category')
+      .where('category.userId = :userId', { userId })
       .getRawMany();
     
     // Extract just the category names and filter out any null/empty values
     return categories
-      .map(c => c.category)
+      .map(c => c.name)
       .filter(c => c)
       .sort(); // Sort alphabetically
   }

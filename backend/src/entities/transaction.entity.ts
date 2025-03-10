@@ -26,8 +26,12 @@ export class Transaction {
   @Column()
   type: string;
 
-  @Column()
-  category: string;
+  @ManyToOne(() => Category, category => category.transactions, { eager: true })
+  @JoinColumn({ name: 'categoryId' })
+  category: Category;
+
+  @Column({ nullable: true })
+  categoryId: number;
 
   @Column({ type: 'date' })
   date: string;
