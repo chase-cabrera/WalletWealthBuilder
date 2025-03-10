@@ -448,15 +448,11 @@ const TransactionList: React.FC<TransactionListProps> = ({
   };
 
   const getCategoryDisplayName = (transaction: Transaction) => {
-    // First try to get the name from the categoryObj if it exists
-    if (transaction.categoryObj && transaction.categoryObj.name) {
-      return transaction.categoryObj.name;
-    }
-    // Fall back to the category string if categoryObj is not available
+    // Just use the category string directly
     if (transaction.category) {
       return transaction.category;
     }
-    // Default if neither is available
+    // Fallback
     return 'Uncategorized';
   };
 

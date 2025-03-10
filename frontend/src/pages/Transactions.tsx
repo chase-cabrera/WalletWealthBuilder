@@ -19,8 +19,18 @@ import {
   DialogContent,
   DialogContentText,
   DialogTitle,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  IconButton,
+  Checkbox,
+  Chip,
+  Menu,
 } from '@mui/material';
-import { Add as AddIcon, FileDownload as FileDownloadIcon, FileUpload as FileUploadIcon, DeleteForever as DeleteForeverIcon } from '@mui/icons-material';
+import { Add as AddIcon, FileDownload as FileDownloadIcon, FileUpload as FileUploadIcon, DeleteForever as DeleteForeverIcon, MoreVert as MoreIcon, Edit as EditIcon, Close as CloseIcon } from '@mui/icons-material';
 import TransactionList from '../components/transactions/TransactionList';
 import TransactionForm from '../components/transactions/TransactionForm';
 import TransactionFilters from '../components/transactions/TransactionFilters';
@@ -33,6 +43,9 @@ import transactionService, {
 import accountService, { Account } from '../services/accountService';
 import { format } from 'date-fns';
 import { useLocation } from 'react-router-dom';
+import { formatCurrency } from '../utils/formatters';
+import categoryService from '../services/categoryService';
+import type { Category as CategoryType } from '../services/transactionService';
 
 const Transactions: React.FC = () => {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -54,6 +67,13 @@ const Transactions: React.FC = () => {
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [deleteAllDialogOpen, setDeleteAllDialogOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [selectedTransactions, setSelectedTransactions] = useState<number[]>([]);
+  const [menuAnchorEl, setMenuAnchorEl] = useState<null | HTMLElement>(null);
+  const [currentTransactionId, setCurrentTransactionId] = useState<number | null>(null);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [editFormData, setEditFormData] = useState<Partial<Transaction>>({});
+  const [categories, setCategories] = useState<CategoryType[]>([]);
   
   const theme = useTheme();
   const location = useLocation();
@@ -128,10 +148,20 @@ const Transactions: React.FC = () => {
     }
   }, []);
 
+  const fetchCategories = useCallback(async () => {
+    try {
+      const fetchedCategories = await categoryService.getAll();
+      setCategories(fetchedCategories);
+    } catch (error) {
+      console.error('Failed to fetch categories:', error);
+    }
+  }, []);
+
   useEffect(() => {
     fetchAccounts();
     fetchTransactions(1);
-  }, [fetchAccounts, fetchTransactions]);
+    fetchCategories();
+  }, [fetchAccounts, fetchTransactions, fetchCategories]);
 
   useEffect(() => {
     try {
@@ -172,11 +202,24 @@ const Transactions: React.FC = () => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const handleAdd = async (data: CreateTransactionDto) => {
+  const handleAdd = async (data: CreateTransactionDto | Partial<Transaction>) => {
     try {
-      await transactionService.create(data);
+      // Convert Partial<Transaction> to CreateTransactionDto if needed
+      const transactionData: CreateTransactionDto = {
+        amount: data.amount ?? 0,
+        description: data.description ?? '',
+        vendor: data.vendor ?? '',
+        purchaser: data.purchaser ?? '',
+        note: data.note ?? '',
+        date: data.date ?? format(new Date(), 'yyyy-MM-dd'),
+        type: (data.type as 'INCOME' | 'EXPENSE') ?? 'EXPENSE',
+        category: data.category ?? 'Uncategorized',
+        accountId: data.accountId
+      };
+      
+      await transactionService.create(transactionData);
+      fetchTransactions();
       setIsFormOpen(false);
-      fetchTransactions(1);
       showSnackbar('Transaction added successfully', 'success');
     } catch (error) {
       console.error('Failed to add transaction:', error);
@@ -237,23 +280,21 @@ const Transactions: React.FC = () => {
     fetchTransactions(1, newFilters);
   };
 
-  const handleImportData = async (importedData: any[]) => {
-    try {
-      setLoading(true);
-      const result = await transactionService.importFromCSV(importedData);
-      
-      if (result.success > 0) {
-        showSnackbar(`Successfully imported ${result.success} transactions`, 'success');
-        fetchTransactions(1);
-      } else {
-        showSnackbar('Failed to import any transactions', 'error');
-      }
-    } catch (error) {
-      console.error('Failed to import transactions:', error);
-      showSnackbar('Failed to import transactions', 'error');
-    } finally {
-      setLoading(false);
-    }
+  const handleImportSuccess = () => {
+    fetchTransactions();
+    setSnackbar({
+      open: true,
+      message: 'Transactions imported successfully',
+      severity: 'success'
+    });
+  };
+
+  const handleImportError = (message: string) => {
+    setSnackbar({
+      open: true,
+      message,
+      severity: 'error'
+    });
   };
 
   const showSnackbar = (message: string, severity: 'success' | 'error') => {
@@ -300,6 +341,108 @@ const Transactions: React.FC = () => {
     }
   };
 
+  const handleMenuOpen = (event: React.MouseEvent<HTMLElement>, transactionId: number) => {
+    setMenuAnchorEl(event.currentTarget);
+    setCurrentTransactionId(transactionId);
+  };
+
+  const handleMenuClose = () => {
+    setMenuAnchorEl(null);
+    setCurrentTransactionId(null);
+  };
+
+  const handleEditTransaction = () => {
+    if (currentTransactionId) {
+      const transaction = transactions.find(t => t.id === currentTransactionId);
+      if (transaction) {
+        // Check if the category exists in our categories list
+        const categoryExists = categories.some((c: CategoryType) => c.name === transaction.category);
+        
+        setEditFormData({
+          ...transaction,
+          // If the category doesn't exist, set it to empty string to avoid the out-of-range error
+          category: categoryExists ? transaction.category : '',
+        });
+        
+        setIsEditDialogOpen(true);
+      }
+    }
+    handleMenuClose();
+  };
+
+  const handleDeleteTransaction = () => {
+    setIsDeleteDialogOpen(true);
+    handleMenuClose();
+  };
+
+  const confirmDeleteTransaction = async () => {
+    if (currentTransactionId) {
+      try {
+        await transactionService.delete(currentTransactionId);
+        fetchTransactions(page);
+        setIsDeleteDialogOpen(false);
+        showSnackbar('Transaction deleted successfully', 'success');
+      } catch (error) {
+        console.error('Failed to delete transaction:', error);
+        showSnackbar('Failed to delete transaction', 'error');
+      }
+    }
+  };
+
+  const handleSaveEdit = async (data: Partial<Transaction>) => {
+    if (currentTransactionId) {
+      try {
+        await transactionService.update(currentTransactionId, data);
+        
+        // Update the transactions list
+        fetchTransactions(page);
+        
+        // Show success message
+        setSnackbar({
+          open: true,
+          message: 'Transaction updated successfully',
+          severity: 'success'
+        });
+        
+        // Close the edit dialog
+        setIsEditDialogOpen(false);
+        setCurrentTransactionId(null);
+        setEditFormData({});
+      } catch (error) {
+        console.error('Failed to update transaction:', error);
+        setSnackbar({
+          open: true,
+          message: 'Failed to update transaction',
+          severity: 'error'
+        });
+      }
+    }
+  };
+
+  const handleSelectAll = (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (event.target.checked) {
+      const newSelected = transactions.map(t => t.id);
+      setSelectedTransactions(newSelected);
+    } else {
+      setSelectedTransactions([]);
+    }
+  };
+
+  const handleSelectTransaction = (id: number) => {
+    const selectedIndex = selectedTransactions.indexOf(id);
+    let newSelected: number[] = [];
+
+    if (selectedIndex === -1) {
+      newSelected = [...selectedTransactions, id];
+    } else {
+      newSelected = selectedTransactions.filter(transactionId => transactionId !== id);
+    }
+
+    setSelectedTransactions(newSelected);
+  };
+
+  const isSelectedTransaction = (id: number) => selectedTransactions.indexOf(id) !== -1;
+
   return (
     <Box sx={{ p: 3 }}>
       <Snackbar 
@@ -342,7 +485,8 @@ const Transactions: React.FC = () => {
           </Button>
           <Box sx={{ flexGrow: { xs: 1, sm: 0 } }}>
             <ImportExportButtons 
-              onImport={handleImportData} 
+              onImportSuccess={handleImportSuccess}
+              onError={handleImportError}
               transactions={transactions}
             />
           </Box>
@@ -382,17 +526,78 @@ const Transactions: React.FC = () => {
           </Box>
         ) : (
           <>
-            <TransactionList 
-              transactions={transactions}
-              onEdit={(transaction) => {
-                setSelectedTransaction(transaction);
-                setIsFormOpen(true);
-              }}
-              onDelete={handleDelete}
-              onBatchUpdate={handleBatchUpdate}
-              accounts={accountMap}
-              hideActionDropdown={true}
-            />
+            <TableContainer component={Paper}>
+              <Table>
+                <TableHead>
+                  <TableRow>
+                    <TableCell padding="checkbox">
+                      <Checkbox
+                        indeterminate={selectedTransactions.length > 0 && selectedTransactions.length < transactions.length}
+                        checked={transactions.length > 0 && selectedTransactions.length === transactions.length}
+                        onChange={handleSelectAll}
+                      />
+                    </TableCell>
+                    <TableCell>Date</TableCell>
+                    <TableCell>Description</TableCell>
+                    <TableCell>Category</TableCell>
+                    <TableCell align="right">Amount</TableCell>
+                    <TableCell>Account</TableCell>
+                    <TableCell align="right">Actions</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {transactions.map((transaction) => {
+                    const isItemSelected = isSelectedTransaction(transaction.id);
+                    
+                    return (
+                      <TableRow
+                        key={transaction.id}
+                        selected={isItemSelected}
+                        hover
+                      >
+                        <TableCell padding="checkbox">
+                          <Checkbox
+                            checked={isItemSelected}
+                            onClick={() => handleSelectTransaction(transaction.id)}
+                          />
+                        </TableCell>
+                        <TableCell>{new Date(transaction.date).toLocaleDateString()}</TableCell>
+                        <TableCell>{transaction.description}</TableCell>
+                        <TableCell>
+                          <Chip 
+                            label={transaction.category} 
+                            size="small"
+                            sx={{ 
+                              bgcolor: 'rgba(0, 0, 0, 0.08)',
+                              borderRadius: '16px'
+                            }}
+                          />
+                        </TableCell>
+                        <TableCell align="right" sx={{ 
+                          color: transaction.type === 'EXPENSE' ? 'error.main' : 'success.main',
+                          fontWeight: 'medium'
+                        }}>
+                          {transaction.type === 'EXPENSE' ? '↓' : '↑'} {formatCurrency(transaction.amount)}
+                        </TableCell>
+                        <TableCell>
+                          {transaction.accountId && accountMap[transaction.accountId] 
+                            ? accountMap[transaction.accountId] 
+                            : (transaction.account?.name || "No Account")}
+                        </TableCell>
+                        <TableCell align="right">
+                          <IconButton
+                            aria-label="more"
+                            onClick={(e) => handleMenuOpen(e, transaction.id)}
+                          >
+                            <MoreIcon />
+                          </IconButton>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </TableContainer>
             
             {totalPages > 1 && (
               <Box sx={{ 
@@ -513,7 +718,7 @@ const Transactions: React.FC = () => {
             setSelectedTransaction(undefined);
           }}
           onSubmit={selectedTransaction 
-            ? (data) => handleEdit(selectedTransaction.id, data)
+            ? (data: any) => handleEdit(selectedTransaction.id, data)
             : handleAdd
           }
           transaction={selectedTransaction}
@@ -548,6 +753,74 @@ const Transactions: React.FC = () => {
           >
             {isDeleting ? 'Deleting...' : 'Delete All'}
           </Button>
+        </DialogActions>
+      </Dialog>
+      
+      <Menu
+        anchorEl={menuAnchorEl}
+        open={Boolean(menuAnchorEl)}
+        onClose={handleMenuClose}
+      >
+        <MenuItem onClick={handleEditTransaction}>
+          <EditIcon fontSize="small" sx={{ mr: 1 }} />
+          Edit
+        </MenuItem>
+        <MenuItem onClick={handleDeleteTransaction}>
+          <DeleteForeverIcon fontSize="small" sx={{ mr: 1 }} />
+          Delete
+        </MenuItem>
+      </Menu>
+      
+      <Dialog 
+        open={isEditDialogOpen} 
+        onClose={() => {
+          setIsEditDialogOpen(false);
+          setCurrentTransactionId(null);
+          setEditFormData({});
+        }}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>
+          Edit Transaction
+          <IconButton
+            aria-label="close"
+            onClick={() => {
+              setIsEditDialogOpen(false);
+              setCurrentTransactionId(null);
+              setEditFormData({});
+            }}
+            sx={{
+              position: 'absolute',
+              right: 8,
+              top: 8,
+            }}
+          >
+            <CloseIcon />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent>
+          <TransactionForm
+            initialData={editFormData}
+            onSubmit={handleSaveEdit}
+            onCancel={() => {
+              setIsEditDialogOpen(false);
+              setCurrentTransactionId(null);
+              setEditFormData({});
+            }}
+            accounts={accounts}
+          />
+        </DialogContent>
+      </Dialog>
+      
+      <Dialog open={isDeleteDialogOpen} onClose={() => setIsDeleteDialogOpen(false)}>
+        <DialogTitle>Confirm Delete</DialogTitle>
+        <DialogContent>
+          <Typography>Are you sure you want to delete this transaction?</Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setIsDeleteDialogOpen(false)}>Cancel</Button>
+          <Button onClick={confirmDeleteTransaction} color="error">Delete</Button>
         </DialogActions>
       </Dialog>
     </Box>

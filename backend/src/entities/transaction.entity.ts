@@ -1,4 +1,4 @@
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn, CreateDateColumn, UpdateDateColumn } from 'typeorm';
 import { User } from '../auth/user.entity';
 import { Account } from './account.entity';
 import { Category } from './category.entity';
@@ -8,29 +8,39 @@ export class Transaction {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @Column()
-  description: string;
-
   @Column({ type: 'decimal', precision: 10, scale: 2 })
   amount: number;
 
   @Column()
-  date: Date;
+  description: string;
+
+  @Column({ nullable: true })
+  vendor: string;
+
+  @Column({ nullable: true })
+  purchaser: string;
+
+  @Column({ nullable: true })
+  note: string;
 
   @Column()
   type: string;
 
-  @Column({ nullable: true })
+  @Column()
   category: string;
 
-  @ManyToOne(() => Category, category => category.transactions, { nullable: true })
-  categoryObj: Category;
+  @Column({ type: 'date' })
+  date: string;
 
-  @ManyToOne(() => User, user => user.transactions)
+  @ManyToOne(() => Account, account => account.transactions, { eager: true })
+  @JoinColumn({ name: 'accountId' })
+  account: Account;
+
+  @Column({ nullable: true })
+  accountId: number;
+
+  @ManyToOne(() => User, user => user.transactions, { eager: false })
   user: User;
-
-  @ManyToOne(() => Account, account => account.transactions, { nullable: true })
-  account: Account | null;
 
   @CreateDateColumn()
   createdAt: Date;

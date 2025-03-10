@@ -16,6 +16,11 @@ import {
   CircularProgress,
   InputAdornment,
   Tooltip,
+  FormControl,
+  InputLabel,
+  Select,
+  FormHelperText,
+  Stack,
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import AddIcon from '@mui/icons-material/Add';
@@ -29,21 +34,26 @@ import { Account } from '../../services/accountService';
 import categoryService from '../../services/categoryService';
 
 interface TransactionFormProps {
-  open: boolean;
-  onClose: () => void;
-  onSubmit: (data: CreateTransactionDto) => void;
+  open?: boolean;
+  onClose?: () => void;
+  onSubmit: (data: CreateTransactionDto | Partial<Transaction>) => void;
+  onCancel?: () => void;
   transaction?: Transaction;
+  initialData?: Partial<Transaction>;
   accounts?: Account[];
 }
 
 const TransactionForm: React.FC<TransactionFormProps> = ({
-  open,
+  open = true,
   onClose,
   onSubmit,
+  onCancel,
   transaction,
+  initialData,
   accounts = [],
 }) => {
-  const [formData, setFormData] = useState<CreateTransactionDto>({
+  // Use initialData if provided, otherwise use transaction
+  const data = initialData || transaction || {
     amount: 0,
     description: '',
     vendor: '',
@@ -53,7 +63,9 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
     type: 'EXPENSE',
     category: '',
     accountId: accounts.length > 0 ? accounts[0].id : undefined,
-  });
+  };
+  
+  const [formData, setFormData] = useState<Partial<Transaction>>(data);
   
   const theme = useTheme();
   const fullScreen = useMediaQuery(theme.breakpoints.down('sm'));
@@ -67,33 +79,18 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
   const [categoryDialogOpen, setCategoryDialogOpen] = useState<boolean>(false);
 
   useEffect(() => {
-    if (transaction) {
-      setFormData({
-        amount: transaction.amount,
-        description: transaction.description || '',
-        vendor: transaction.vendor || '',
-        purchaser: transaction.purchaser || '',
-        note: transaction.note || '',
-        date: transaction.date,
-        type: transaction.type,
-        category: transaction.category || '',
-        accountId: transaction.accountId,
-      });
-      setSelectedDate(transaction.date ? parseISO(transaction.date) : new Date());
-    } else {
-      // Reset form for new transaction
-      setFormData({
-        amount: 0,
-        description: '',
-        vendor: '',
-        purchaser: '',
-        note: '',
-        date: format(new Date(), 'yyyy-MM-dd'),
-        type: 'EXPENSE',
-        category: '',
-        accountId: accounts.length > 0 ? accounts[0].id : undefined,
-      });
-    }
+    // Ensure all fields have default values to prevent undefined values
+    setFormData({
+      amount: data.amount ?? 0,
+      description: data.description ?? '',
+      vendor: data.vendor ?? '',
+      purchaser: data.purchaser ?? '',
+      note: data.note ?? '',
+      date: data.date ?? format(new Date(), 'yyyy-MM-dd'),
+      type: data.type ?? 'EXPENSE',
+      category: data.category ?? '',
+      accountId: data.accountId ?? undefined,
+    });
     
     // Fetch categories from the backend
     const fetchCategories = async () => {
@@ -127,21 +124,52 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
     };
     
     fetchCategories();
-  }, [transaction, accounts]);
+  }, [data, accounts]);
 
-  // Add a useEffect to automatically adjust the sign based on type
+  // Update the useEffect for handling amount sign
   useEffect(() => {
     // Only apply this logic when the type changes, not on every render
-    if (formData.type === 'INCOME' && formData.amount < 0) {
-      setFormData(prev => ({ ...prev, amount: Math.abs(prev.amount) }));
-    } else if (formData.type === 'EXPENSE' && formData.amount > 0) {
-      setFormData(prev => ({ ...prev, amount: -Math.abs(prev.amount) }));
+    if (formData.type === 'INCOME' && (formData.amount ?? 0) < 0) {
+      setFormData(prev => ({ ...prev, amount: Math.abs(prev.amount ?? 0) }));
+    } else if (formData.type === 'EXPENSE' && (formData.amount ?? 0) > 0) {
+      setFormData(prev => ({ ...prev, amount: -Math.abs(prev.amount ?? 0) }));
     }
   }, [formData.type]);
 
+  // Update the useEffect that checks categories
+  useEffect(() => {
+    // If categories are loaded and formData has a category that's not in the list
+    if (categories.length > 0 && formData.category) {
+      const categoryExists = categories.some(c => c.name === formData.category);
+      if (!categoryExists) {
+        // Set to empty string or first category
+        setFormData(prev => ({
+          ...prev,
+          category: ''
+        }));
+      }
+    }
+  }, [categories]); // Remove formData.category from dependencies
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onSubmit(formData);
+    
+    // Ensure all required fields have values before submitting
+    const submissionData = {
+      ...formData,
+      amount: formData.amount ?? 0,
+      description: formData.description ?? '',
+      date: formData.date ?? format(new Date(), 'yyyy-MM-dd'),
+      type: formData.type ?? 'EXPENSE',
+      category: formData.category ?? 'Uncategorized',
+    };
+    
+    // Call the onSubmit prop with the form data
+    onSubmit(submissionData);
+    
+    // Call onCancel and onClose if they exist
+    if (onCancel) onCancel();
+    if (onClose) onClose();
   };
 
   const handleAddCategory = async () => {
@@ -156,7 +184,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
     try {
       const newCategory = await categoryService.create({
         name: newCategoryName.trim(),
-        type: formData.type,
+        type: formData.type as 'INCOME' | 'EXPENSE' || 'EXPENSE', // Provide a default
       });
 
       // Add the new category to the list
@@ -182,7 +210,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
   const toggleAmountSign = () => {
     setFormData({
       ...formData,
-      amount: -formData.amount
+      amount: -(formData.amount ?? 0)
     });
   };
 
@@ -191,6 +219,27 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
     category => !category.type || category.type === formData.type
   );
 
+  if (open === false && !onClose) {
+    // Non-dialog mode
+    return (
+      <form onSubmit={handleSubmit}>
+        {/* Form content */}
+        <Box sx={{ mt: 2 }}>
+          {/* Form fields */}
+          <Button type="submit" variant="contained" color="primary">
+            Save
+          </Button>
+          {onCancel && (
+            <Button onClick={onCancel} sx={{ ml: 1 }}>
+              Cancel
+            </Button>
+          )}
+        </Box>
+      </form>
+    );
+  }
+  
+  // Dialog mode (original return)
   return (
     <>
       <Dialog 
@@ -200,22 +249,21 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
         maxWidth="md"
         fullWidth
       >
-        <DialogTitle sx={{ m: 0, p: 2, bgcolor: theme.palette.background.default }}>
-          <Typography variant="h6" component="div" fontWeight="bold">
-            {transaction ? 'Edit Transaction' : 'Add Transaction'}
-          </Typography>
-          <IconButton
-            aria-label="close"
-            onClick={onClose}
-            sx={{
-              position: 'absolute',
-              right: 8,
-              top: 8,
-              color: theme.palette.grey[500],
-            }}
-          >
-            <CloseIcon />
-          </IconButton>
+        <DialogTitle>
+          {transaction ? 'Edit Transaction' : 'Add Transaction'}
+          {onClose && (
+            <IconButton
+              aria-label="close"
+              onClick={onClose}
+              sx={{
+                position: 'absolute',
+                right: 8,
+                top: 8,
+              }}
+            >
+              <CloseIcon />
+            </IconButton>
+          )}
         </DialogTitle>
         <form onSubmit={handleSubmit}>
           <DialogContent dividers sx={{ p: 3 }}>
@@ -230,8 +278,8 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
                       const newType = e.target.value as 'INCOME' | 'EXPENSE';
                       // When changing type, adjust the sign accordingly
                       const newAmount = newType === 'INCOME' 
-                        ? Math.abs(formData.amount) 
-                        : -Math.abs(formData.amount);
+                        ? Math.abs(formData.amount ?? 0) 
+                        : -Math.abs(formData.amount ?? 0);
                       
                       setFormData({ 
                         ...formData, 
@@ -249,17 +297,17 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
                   <TextField
                     label="Amount"
                     type="number"
-                    value={Math.abs(formData.amount)}
+                    value={Math.abs(formData.amount ?? 0)}
                     onChange={(e) => setFormData({ 
                       ...formData, 
-                      amount: parseFloat(e.target.value) * (formData.amount < 0 ? -1 : 1) 
+                      amount: parseFloat(e.target.value) * (formData.amount ?? 0 < 0 ? -1 : 1) 
                     })}
                     fullWidth
                     sx={{ 
                       mb: 3,
                       '& .MuiOutlinedInput-root': {
-                        borderColor: formData.amount < 0 ? theme.palette.error.main : 'inherit',
-                        backgroundColor: formData.amount < 0 ? `${theme.palette.error.light}10` : 'inherit',
+                        borderColor: (formData.amount ?? 0) < 0 ? theme.palette.error.main : 'inherit',
+                        backgroundColor: (formData.amount ?? 0) < 0 ? `${theme.palette.error.light}10` : 'inherit',
                       }
                     }}
                     InputProps={{
@@ -267,11 +315,11 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
                         <Typography 
                           sx={{ 
                             mr: 1, 
-                            color: formData.amount < 0 ? theme.palette.error.main : theme.palette.success.main,
+                            color: (formData.amount ?? 0) < 0 ? theme.palette.error.main : theme.palette.success.main,
                             fontWeight: 'bold'
                           }}
                         >
-                          {formData.amount < 0 ? '-$' : '$'}
+                          {(formData.amount ?? 0) < 0 ? '-$' : '$'}
                         </Typography>
                       ),
                       endAdornment: (
@@ -279,7 +327,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
                           <IconButton 
                             size="small" 
                             onClick={toggleAmountSign}
-                            color={formData.amount < 0 ? "error" : "success"}
+                            color={(formData.amount ?? 0) < 0 ? "error" : "success"}
                           >
                             <SwapHorizIcon />
                           </IconButton>
@@ -288,7 +336,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
                     }}
                     helperText={
                       <Typography variant="caption" color="text.secondary">
-                        {formData.amount < 0 
+                        {(formData.amount ?? 0) < 0 
                           ? "Negative amount (money going out)" 
                           : "Positive amount (money coming in)"} - Click the icon to toggle
                       </Typography>
@@ -297,7 +345,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
                   
                   <TextField
                     label="Description"
-                    value={formData.description}
+                    value={formData.description ?? ''}
                     onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                     fullWidth
                     sx={{ mb: 3 }}
@@ -305,7 +353,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
                   
                   <TextField
                     label="Vendor"
-                    value={formData.vendor}
+                    value={formData.vendor ?? ''}
                     onChange={(e) => setFormData({ ...formData, vendor: e.target.value })}
                     fullWidth
                     sx={{ mb: 3 }}
@@ -313,7 +361,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
                   
                   <TextField
                     label="Purchaser"
-                    value={formData.purchaser}
+                    value={formData.purchaser ?? ''}
                     onChange={(e) => setFormData({ ...formData, purchaser: e.target.value })}
                     fullWidth
                     sx={{ mb: 3 }}
@@ -324,7 +372,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
                   <LocalizationProvider dateAdapter={AdapterDateFns}>
                     <DatePicker
                       label="Date"
-                      value={new Date(formData.date)}
+                      value={formData.date ? new Date(formData.date) : new Date()}
                       onChange={(date) => {
                         if (date) {
                           setFormData({ 
@@ -345,7 +393,9 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
                   <TextField
                     select
                     label="Category"
-                    value={formData.category}
+                    value={formData.category && categories.some(c => c.name === formData.category) 
+                      ? formData.category 
+                      : ''}
                     onChange={(e) => setFormData({ ...formData, category: e.target.value })}
                     fullWidth
                     sx={{ mb: 3 }}
@@ -369,7 +419,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
                     error={!!categoryError}
                     helperText={categoryError}
                   >
-                    {filteredCategories.map((category) => (
+                    {categories.map((category) => (
                       <MenuItem key={category.id} value={category.name}>
                         {category.name}
                       </MenuItem>
@@ -386,42 +436,37 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
                     sx={{ mb: 3 }}
                   />
                   
-                  <TextField
-                    select
-                    label="Account"
-                    value={formData.accountId || ''}
-                    onChange={(e) => setFormData({ 
-                      ...formData, 
-                      accountId: e.target.value ? Number(e.target.value) : undefined 
-                    })}
-                    fullWidth
-                    sx={{ mb: 3 }}
-                  >
-                    <MenuItem value="">
-                      <em>None</em>
-                    </MenuItem>
-                    {accounts?.map((account) => (
-                      <MenuItem key={account.id} value={account.id}>
-                        {account.name}
-                      </MenuItem>
-                    ))}
-                  </TextField>
+                  <FormControl fullWidth>
+                    <InputLabel>Account</InputLabel>
+                    <Select
+                      value={formData.accountId || ''}
+                      onChange={(e) => setFormData({ 
+                        ...formData, 
+                        accountId: e.target.value ? Number(e.target.value) : undefined 
+                      })}
+                      label="Account"
+                    >
+                      <MenuItem value="">No Account</MenuItem>
+                      {accounts?.map((account) => (
+                        <MenuItem key={account.id} value={account.id}>
+                          {account.name}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
                 </Grid>
               </Grid>
             </Box>
           </DialogContent>
           <DialogActions sx={{ px: 3, py: 2 }}>
-            <Button onClick={onClose} color="inherit">
-              Cancel
+            <Button type="submit" variant="contained" color="primary">
+              {transaction ? 'Save Changes' : 'Add Transaction'}
             </Button>
-            <Button 
-              type="submit" 
-              variant="contained" 
-              color="primary"
-              disabled={loading}
-            >
-              {transaction ? 'Update' : 'Add'}
-            </Button>
+            {onCancel && (
+              <Button onClick={onCancel} color="inherit">
+                Cancel
+              </Button>
+            )}
           </DialogActions>
         </form>
       </Dialog>

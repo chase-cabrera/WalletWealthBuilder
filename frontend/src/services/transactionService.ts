@@ -17,14 +17,18 @@ export interface Transaction {
   id: number;
   amount: number;
   description: string;
-  vendor: string;
-  purchaser: string;
-  note: string;
+  vendor?: string;
+  purchaser?: string;
+  note?: string;
   type: 'INCOME' | 'EXPENSE';
   category: string;
-  categoryObj?: Category;
   date: string;
   accountId?: number;
+  account?: {
+    id: number;
+    name: string;
+    balance: number;
+  };
   createdAt: string;
   updatedAt: string;
 }
@@ -100,39 +104,16 @@ export const deleteTransaction = async (id: number) => {
   return response.data;
 };
 
-export const importFromCSV = async (csvData: any[]): Promise<{ success: number; failed: number }> => {
-  const token = localStorage.getItem('token');
-  if (!token) {
-    throw new Error('No authentication token found');
+export const importFromCSV = async (data: any[]) => {
+  console.log('Sending data to backend:', data);
+  try {
+    const response = await axiosInstance.post('/transactions/import/csv', data);
+    console.log('Backend response:', response);
+    return response.data;
+  } catch (error) {
+    console.error('Error in importFromCSV:', error);
+    throw error;
   }
-
-  // Process the data before sending to the server
-  const processedData = csvData.map(row => {
-    const description = row.description || '';
-    const category = row.category || '';
-    
-    // Check if this is a savings-related transaction
-    const isSavingsTransaction = 
-      category.toLowerCase().includes('saving') || 
-      category.toLowerCase().includes('investment');
-    
-    // If it's a savings transaction, ensure the amount is positive
-    if (isSavingsTransaction && row.amount < 0) {
-      row.amount = Math.abs(row.amount);
-    }
-    
-    return row;
-  });
-
-  // Send the processed data to the server
-  const response = await axios.post(`${API_URL}/transactions/import/csv`, processedData, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-  });
-
-  return response.data;
 };
 
 // Update the getAll method to remove console logs
