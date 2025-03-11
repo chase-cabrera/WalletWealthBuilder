@@ -8,6 +8,7 @@ import {
   Param,
   UseGuards,
   Request,
+  Query,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { BudgetsService } from './budgets.service';
@@ -37,9 +38,37 @@ export class BudgetsController {
   @Get()
   @ApiOperation({ summary: 'Get all budgets for the current user' })
   @ApiResponse({ status: 200, description: 'Return all budgets.' })
-  findAll(@Request() req) {
-    const user = req.user;
-    return this.budgetsService.findAll(user.id);
+  async findAll(
+    @GetUser() user: User,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+  ) {
+    try {
+      console.log('GET /budgets Request:', {
+        userId: user.id,
+        startDate,
+        endDate,
+        timestamp: new Date().toISOString()
+      });
+
+      const budgets = await this.budgetsService.findAll(user.id, startDate, endDate);
+
+      console.log('GET /budgets Response:', {
+        count: budgets.length,
+        budgets: budgets.map(b => ({
+          id: b.id,
+          categoryId: b.categoryId,
+          amount: b.amount,
+          startDate: b.startDate,
+          endDate: b.endDate
+        }))
+      });
+
+      return budgets;
+    } catch (error) {
+      console.error('Error in budgets controller:', error);
+      throw error;
+    }
   }
 
   @Get(':id')
@@ -67,5 +96,14 @@ export class BudgetsController {
   remove(@Param('id') id: string, @Request() req) {
     const user = req.user;
     return this.budgetsService.remove(+id, user.id);
+  }
+
+  @Post('recalculate')
+  async recalculateAllBudgets(@GetUser() user: User): Promise<{ message: string, updatedBudgets: number }> {
+    const count = await this.budgetsService.recalculateAllBudgets(user.id);
+    return { 
+      message: `Successfully recalculated ${count} budgets`, 
+      updatedBudgets: count 
+    };
   }
 } 

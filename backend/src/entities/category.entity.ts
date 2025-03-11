@@ -1,6 +1,7 @@
 import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, CreateDateColumn, UpdateDateColumn, OneToMany } from 'typeorm';
 import { User } from '../auth/user.entity';
 import { Transaction } from './transaction.entity';
+import { Budget } from './budget.entity';
 
 @Entity('categories')
 export class Category {
@@ -22,8 +23,11 @@ export class Category {
   @ManyToOne(() => User, user => user.categories)
   user: User;
 
-  @OneToMany(() => Transaction, transaction => transaction.category, { nullable: true })
+  @OneToMany(() => Transaction, transaction => transaction.category)
   transactions: Transaction[];
+
+  @OneToMany(() => Budget, budget => budget.category)
+  budgets: Budget[];
 
   @CreateDateColumn()
   createdAt: Date;

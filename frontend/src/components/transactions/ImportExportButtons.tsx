@@ -32,10 +32,10 @@ import transactionService from '../../services/transactionService';
 import Papa from 'papaparse';
 
 interface ImportExportButtonsProps {
-  onImportSuccess: () => void;
-  onError: (message: string) => void;
   transactions?: Transaction[];
-  onImport?: (data: any[]) => Promise<void>;
+  onImport?: () => void;
+  onImportSuccess?: () => void;
+  onError?: (message: string) => void;
 }
 
 const ImportExportButtons: React.FC<ImportExportButtonsProps> = ({ 
@@ -55,6 +55,8 @@ const ImportExportButtons: React.FC<ImportExportButtonsProps> = ({
   const [newAccountName, setNewAccountName] = useState('');
   const [parsedTransactions, setParsedTransactions] = useState<any[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
+  const [categories, setCategories] = useState<string[] | { id: number; name: string }[]>([]);
+  const [selectedCategory, setSelectedCategory] = useState<string | number>('');
   
   // Fetch accounts when component mounts
   useEffect(() => {
@@ -97,7 +99,7 @@ const ImportExportButtons: React.FC<ImportExportButtonsProps> = ({
       setAccounts(response);
     } catch (error) {
       console.error('Error fetching accounts:', error);
-      onError('Failed to load accounts');
+      if (onError) onError('Failed to load accounts');
     }
   };
 
@@ -111,6 +113,10 @@ const ImportExportButtons: React.FC<ImportExportButtonsProps> = ({
       complete: (results) => {
         const parsedData = results.data as any[];
         
+        // Debug log raw parsed data
+        console.log('Raw parsed data:', parsedData);
+        console.log('CSV fields:', results.meta.fields);
+        
         // Check if the CSV has an account column
         const hasAccountColumn = results.meta.fields?.some(
           field => field.toLowerCase().includes('account') || 
@@ -118,7 +124,6 @@ const ImportExportButtons: React.FC<ImportExportButtonsProps> = ({
                   field.toLowerCase() === 'bank'
         );
         
-        console.log('CSV fields:', results.meta.fields);
         console.log('Has account column:', hasAccountColumn);
         
         if (!hasAccountColumn && parsedData.length > 0) {
@@ -127,94 +132,97 @@ const ImportExportButtons: React.FC<ImportExportButtonsProps> = ({
           setAccountSelectionOpen(true);
         } else {
           // Process transactions with account information
-          processTransactions(parsedData);
+          processTransactions(parsedData, accountNameToId[selectedAccountId]);
         }
       },
       error: (error) => {
         console.error('Error parsing CSV:', error);
-        onError('Error parsing CSV file');
+        if (onError) onError('Error parsing CSV file');
       }
     });
   };
   
-  const processTransactions = async (transactions: any[], accountId?: string | number) => {
+  const processTransactions = async (transactions: any[], accountId: number) => {
     try {
-      console.log('Processing transactions:', transactions);
-      console.log('Using account ID:', accountId);
-      
-      // Map CSV data to transaction format with better field mapping
-      const formattedTransactions = transactions.map(item => {
-        // Parse amount properly, handling currency symbols and commas
+      setIsImporting(true);
+      console.log('Raw transactions to process:', transactions);
+
+      const formattedTransactions = transactions.map(transaction => {
+        // Debug log each transaction before formatting
+        console.log('Processing transaction:', transaction);
+        
+        // Parse amount, handling different formats
         let amount = 0;
-        if (item.Amount && typeof item.Amount === 'string') {
-          // Remove currency symbols, commas, etc. and parse as float
-          amount = parseFloat(item.Amount.replace(/[^0-9.-]+/g, ''));
-        } else if (item.amount && typeof item.amount === 'string') {
-          amount = parseFloat(item.amount.replace(/[^0-9.-]+/g, ''));
-        } else if (typeof item.Amount === 'number') {
-          amount = item.Amount;
-        } else if (typeof item.amount === 'number') {
-          amount = item.amount;
+        if (transaction.Amount) {
+          const cleanAmount = transaction.Amount.toString()
+            .replace(/[^0-9.-]+/g, '')
+            .replace(/,/g, '');
+          amount = parseFloat(cleanAmount);
         }
-        
-        // Determine transaction type based on amount
-        const type = amount >= 0 ? 'INCOME' : 'EXPENSE';
-        
-        // Get date in the correct format
-        let formattedDate = new Date().toISOString().split('T')[0]; // Default to today
-        if (item.Date) {
-          // Try to parse the date (assuming MM/DD/YY format)
-          const dateParts = item.Date.split('/');
-          if (dateParts.length === 3) {
-            // Convert to YYYY-MM-DD format
-            const year = dateParts[2].length === 2 ? '20' + dateParts[2] : dateParts[2];
-            const month = dateParts[0].padStart(2, '0');
-            const day = dateParts[1].padStart(2, '0');
-            formattedDate = `${year}-${month}-${day}`;
-          }
-        } else if (item.date) {
-          formattedDate = item.date;
-        }
-        
-        // Create a properly formatted transaction object
+
+        // Get category name if it's an object
+        const category = transaction.Category && typeof transaction.Category === 'object' 
+          ? transaction.Category.name 
+          : transaction.Category;
+
         return {
-          date: formattedDate,
-          description: item.Vendor || item.Description || item.description || item.memo || 'Imported Transaction',
-          amount: Math.abs(amount), // Store absolute value
-          category: item.Category || item.category || 'Uncategorized',
-          type: item.Type || item.type || type,
-          note: item.Note || item.note || '',
-          purchaser: item.Purchaser || item.purchaser || '',
-          accountId: accountId ? Number(accountId) : null
+          date: transaction.Date || new Date().toISOString().split('T')[0],
+          amount: isNaN(amount) ? 0 : Math.abs(amount),
+          description: transaction.Note || transaction.Vendor || 'Imported Transaction',
+          vendor: transaction.Vendor || '',
+          type: amount < 0 ? 'EXPENSE' : 'INCOME',
+          category: category || 'Uncategorized',
+          accountId: accountId
         };
+      }).filter(transaction => {
+        console.log('Checking transaction:', transaction);
+        const isValid = transaction.amount !== 0;
+        console.log('Is valid?', isValid);
+        return isValid;
       });
+
+      console.log('Formatted transactions:', formattedTransactions);
       
-      console.log('Formatted transactions with accountId:', formattedTransactions);
-      
-      // Import the transactions
-      const result = await transactionService.importFromCSV(formattedTransactions);
-      console.log('Import result:', result);
-      
+      if (formattedTransactions.length === 0) {
+        throw new Error('No valid transactions found in the CSV file. Please check that your CSV file contains valid transaction amounts.');
+      }
+
+      const response = await transactionService.importTransactions(formattedTransactions);
+      console.log('Import response:', response);
+
+      if (onImportSuccess) {
+        onImportSuccess();
+      }
       setImportSuccess(true);
-      onImportSuccess();
-      
-      // Close dialogs after a short delay
-      setTimeout(() => {
-        setAccountSelectionOpen(false);
-        setImportDialogOpen(false);
-      }, 2000);
-      
+      setImportDialogOpen(false);
     } catch (error) {
-      console.error('Error processing transactions:', error);
-      onError('Error processing transactions');
+      console.error('Import error:', error);
+      setImportError('Failed to import transactions: ' + (error instanceof Error ? error.message : 'Unknown error'));
+      if (onError) onError(error instanceof Error ? error.message : 'Unknown error');
+    } finally {
+      setIsImporting(false);
     }
   };
   
   const handleSelectAccount = () => {
-    if (selectedAccountId) {
-      console.log('Selected account ID:', selectedAccountId, 'Type:', typeof selectedAccountId);
-      processTransactions(parsedTransactions, selectedAccountId);
+    if (!selectedAccountId) {
+      setImportError('Please select an account');
+      return;
     }
+
+    const accountId = accountNameToId[selectedAccountId];
+    console.log('Account mapping:', {
+      selectedAccountId,
+      accountNameToId,
+      resolvedAccountId: accountId
+    });
+
+    if (!accountId) {
+      setImportError('Invalid account selected');
+      return;
+    }
+
+    processTransactions(parsedTransactions, accountId);
   };
   
   const handleCreateAccount = async () => {
@@ -237,11 +245,13 @@ const ImportExportButtons: React.FC<ImportExportButtonsProps> = ({
         processTransactions(parsedTransactions, response.id);
         
         // Show success message
-        onImportSuccess();
+        if (onImportSuccess) {
+          onImportSuccess();
+        }
         
       } catch (error) {
         console.error('Error creating account:', error);
-        onError('Error creating account');
+        if (onError) onError('Error creating account');
       }
     }
   };
@@ -298,6 +308,9 @@ const ImportExportButtons: React.FC<ImportExportButtonsProps> = ({
           </IconButton>
         </DialogTitle>
         <DialogContent>
+          <Alert severity="info" sx={{ mb: 2 }}>
+            Budgets will be automatically created for any new categories in your imported transactions.
+          </Alert>
           {importSuccess ? (
             <Box sx={{ textAlign: 'center', py: 3 }}>
               <Typography variant="h6" color="success.main" gutterBottom>
@@ -405,7 +418,7 @@ const ImportExportButtons: React.FC<ImportExportButtonsProps> = ({
                 onChange={(e) => setSelectedAccountId(e.target.value as string)}
               >
                 {accounts.map((account) => (
-                  <MenuItem key={account.id} value={account.id}>
+                  <MenuItem key={account.id} value={account.name}>
                     {account.name} ({account.type})
                   </MenuItem>
                 ))}

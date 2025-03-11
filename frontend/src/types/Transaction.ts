@@ -2,7 +2,9 @@
 export interface CategoryObject {
   id: number;
   name: string;
-  type?: string;
+  type: string;
+  description?: string;
+  isDefault: boolean;
 }
 
 export interface Transaction {

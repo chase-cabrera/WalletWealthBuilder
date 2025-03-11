@@ -1,24 +1,38 @@
-import { IsNotEmpty, IsNumber, IsString, IsDate, IsIn } from 'class-validator';
-import { Type } from 'class-transformer';
+import { IsNotEmpty, IsNumber, IsOptional, IsString, IsDateString, IsBoolean } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateBudgetDto {
-  @IsString()
-  @IsNotEmpty()
-  category: string;
-
+  @ApiProperty({ description: 'Category ID' })
   @IsNumber()
   @IsNotEmpty()
-  limit: number;
+  categoryId: number;
 
+  @ApiProperty({ description: 'Budget amount' })
+  @IsNumber()
+  @IsNotEmpty()
+  amount: number;
+
+  @ApiPropertyOptional({ description: 'Budget description' })
   @IsString()
-  @IsIn(['WEEKLY', 'MONTHLY', 'QUARTERLY', 'YEARLY'])
-  period: string;
+  @IsOptional()
+  description?: string;
 
-  @IsDate()
-  @Type(() => Date)
-  startDate: Date;
+  @ApiProperty({ description: 'Budget start date (YYYY-MM-DD)' })
+  @IsDateString()
+  @IsNotEmpty()
+  startDate: string;
 
-  @IsDate()
-  @Type(() => Date)
-  endDate: Date;
+  @ApiProperty({ description: 'Budget end date (YYYY-MM-DD)' })
+  @IsDateString()
+  @IsNotEmpty()
+  endDate: string;
+
+  @ApiPropertyOptional({ description: 'Whether this budget was auto-created' })
+  @IsBoolean()
+  @IsOptional()
+  isAutoCreated?: boolean;
+
+  @IsOptional()
+  @IsNumber()
+  spent?: number;
 } 

@@ -53,16 +53,22 @@ const TransactionFilters: React.FC<TransactionFiltersProps> = ({
   const [endDate, setEndDate] = useState<Date | null>(
     initialFilters.endDate ? new Date(initialFilters.endDate) : null
   );
-  const [minAmount, setMinAmount] = useState<string>(initialFilters.minAmount?.toString() || '');
-  const [maxAmount, setMaxAmount] = useState<string>(initialFilters.maxAmount?.toString() || '');
-  const [category, setCategory] = useState<string>(initialFilters.category || '');
+  const [minAmount, setMinAmount] = useState<string>(
+    initialFilters.minAmount ? initialFilters.minAmount.toString() : ''
+  );
+  const [maxAmount, setMaxAmount] = useState<string>(
+    initialFilters.maxAmount ? initialFilters.maxAmount.toString() : ''
+  );
+  const [category, setCategory] = useState<string>(initialFilters.category || 'all');
   const [accountId, setAccountId] = useState<number | ''>(
     initialFilters.accountId || ''
   );
-  const [type, setType] = useState<string>(initialFilters.type || '');
+  const [type, setType] = useState<string>(initialFilters.type || 'all');
   const [search, setSearch] = useState<string>('');
-  const [sortBy, setSortBy] = useState<string>('date');
-  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
+  const [sortBy, setSortBy] = useState(initialFilters?.sortBy || 'date');
+  const [sortOrder, setSortOrder] = useState<'ASC' | 'DESC'>(
+    (initialFilters?.sortOrder as 'ASC' | 'DESC') || 'DESC'
+  );
   const [activeFilters, setActiveFilters] = useState<string[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
   const [categoriesLoading, setCategoriesLoading] = useState<boolean>(false);
@@ -89,6 +95,21 @@ const TransactionFilters: React.FC<TransactionFiltersProps> = ({
 
     fetchCategories();
   }, []);
+
+  useEffect(() => {
+    console.log('Setting initial filter values:', initialFilters);
+    
+    // Set the form values from initialFilters
+    setStartDate(initialFilters.startDate ? new Date(initialFilters.startDate) : null);
+    setEndDate(initialFilters.endDate ? new Date(initialFilters.endDate) : null);
+    setCategory(initialFilters.category || 'all');
+    setType(initialFilters.type || 'all');
+    setMinAmount(initialFilters.minAmount ? initialFilters.minAmount.toString() : '');
+    setMaxAmount(initialFilters.maxAmount ? initialFilters.maxAmount.toString() : '');
+    setSearch(initialFilters.search || '');
+    setSortBy(initialFilters.sortBy || 'date');
+    setSortOrder(initialFilters.sortOrder || 'DESC');
+  }, [initialFilters]);
 
   const applyFilters = () => {
     const filters: TransactionQuery = {};
@@ -138,10 +159,12 @@ const TransactionFilters: React.FC<TransactionFiltersProps> = ({
     }
 
     filters.sortBy = sortBy;
-    filters.sortDirection = sortDirection;
+    filters.sortOrder = sortOrder;
     
-    if (sortBy !== 'date' || sortDirection !== 'desc') {
-      newActiveFilters.push(`Sort: ${sortBy} (${sortDirection === 'asc' ? 'ascending' : 'descending'})`);
+    if (sortBy !== 'date' || sortOrder !== 'DESC') {
+      newActiveFilters.push(
+        `Sort: ${sortBy} (${sortOrder === 'ASC' ? 'ascending' : 'descending'})`
+      );
     }
 
     setActiveFilters(newActiveFilters);
@@ -151,18 +174,18 @@ const TransactionFilters: React.FC<TransactionFiltersProps> = ({
   const resetFilters = () => {
     setStartDate(null);
     setEndDate(null);
-    setType('');
-    setCategory('');
+    setType('all');
+    setCategory('all');
     setAccountId('');
     setMinAmount('');
     setMaxAmount('');
     setSearch('');
     setSortBy('date');
-    setSortDirection('desc');
+    setSortOrder('DESC');
     setActiveFilters([]);
     onFilter({
       sortBy: 'date',
-      sortDirection: 'desc'
+      sortOrder: 'DESC'
     });
   };
 
@@ -172,7 +195,7 @@ const TransactionFilters: React.FC<TransactionFiltersProps> = ({
     } else if (filter.startsWith('Before')) {
       setEndDate(null);
     } else if (filter.startsWith('Categories') || filter.startsWith('Category')) {
-      setCategory('');
+      setCategory('all');
     } else if (filter.startsWith('Account')) {
       setAccountId('');
     } else if (filter.startsWith('Min')) {
@@ -183,7 +206,7 @@ const TransactionFilters: React.FC<TransactionFiltersProps> = ({
       setSearch('');
     } else if (filter.startsWith('Sort')) {
       setSortBy('date');
-      setSortDirection('desc');
+      setSortOrder('DESC');
     }
     
     setTimeout(applyFilters, 0);
@@ -224,7 +247,7 @@ const TransactionFilters: React.FC<TransactionFiltersProps> = ({
             variant="outlined"
             size="small"
           >
-            <MenuItem value="">All Types</MenuItem>
+            <MenuItem value="all">All Types</MenuItem>
             <MenuItem value="INCOME">Income</MenuItem>
             <MenuItem value="EXPENSE">Expense</MenuItem>
           </TextField>
@@ -240,7 +263,7 @@ const TransactionFilters: React.FC<TransactionFiltersProps> = ({
               input={<OutlinedInput label="Categories" />}
               disabled={categoriesLoading}
             >
-              <MenuItem value="">All Categories</MenuItem>
+              <MenuItem value="all">All Categories</MenuItem>
               {categories.map((cat) => (
                 <MenuItem key={cat} value={cat}>
                   {cat}
@@ -311,33 +334,34 @@ const TransactionFilters: React.FC<TransactionFiltersProps> = ({
         </Grid>
         
         <Grid item xs={12} md={3}>
-          <FormControl fullWidth size="small">
+          <FormControl fullWidth margin="normal">
             <InputLabel>Sort By</InputLabel>
             <Select
               value={sortBy}
-              onChange={(e) => setSortBy(e.target.value)}
-              input={<OutlinedInput label="Sort By" />}
+              onChange={(e) => {
+                setSortBy(e.target.value);
+                applyFilters();
+              }}
             >
               <MenuItem value="date">Date</MenuItem>
               <MenuItem value="amount">Amount</MenuItem>
               <MenuItem value="description">Description</MenuItem>
-              <MenuItem value="vendor">Vendor</MenuItem>
-              <MenuItem value="category">Category</MenuItem>
-              <MenuItem value="createdAt">Created At</MenuItem>
             </Select>
           </FormControl>
         </Grid>
         
         <Grid item xs={12} md={3}>
-          <FormControl fullWidth size="small">
-            <InputLabel>Sort Direction</InputLabel>
+          <FormControl fullWidth margin="normal">
+            <InputLabel>Sort Order</InputLabel>
             <Select
-              value={sortDirection}
-              onChange={(e) => setSortDirection(e.target.value as 'asc' | 'desc')}
-              input={<OutlinedInput label="Sort Direction" />}
+              value={sortOrder}
+              onChange={(e) => {
+                setSortOrder(e.target.value as 'ASC' | 'DESC');
+                applyFilters();
+              }}
             >
-              <MenuItem value="asc">Ascending</MenuItem>
-              <MenuItem value="desc">Descending</MenuItem>
+              <MenuItem value="DESC">Descending</MenuItem>
+              <MenuItem value="ASC">Ascending</MenuItem>
             </Select>
           </FormControl>
         </Grid>

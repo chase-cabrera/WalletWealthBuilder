@@ -1,50 +1,79 @@
 import axiosInstance from './axiosConfig';
+import { Category } from '../types/Category';
 
-// Add the missing type definitions
+// Define the Budget interface
 export interface Budget {
   id: number;
-  category: string;
-  limit: number;
+  category: string | Category;
+  amount: number;
   spent: number;
-  period: string;
   startDate: string;
   endDate: string;
-  createdAt: string;
-  updatedAt: string;
+  description?: string;
+  isAutoCreated?: boolean;
 }
 
 export interface CreateBudgetDto {
   category: string;
-  limit: number;
-  period: string;
+  amount: number;
   startDate: string;
   endDate: string;
+  description?: string;
 }
 
+interface GetBudgetsParams {
+  startDate?: string;
+  endDate?: string;
+}
+
+const transformBudget = (budget: any): Budget => {
+  console.log('Transforming budget:', budget);
+  
+  const transformed = {
+    ...budget,
+    category: budget.category?.name || budget.category || '',
+    amount: Number(budget.amount) || 0,
+    spent: Number(budget.spent) || 0,
+    startDate: budget.startDate || '',
+    endDate: budget.endDate || '',
+    description: budget.description || '',
+    isAutoCreated: budget.isAutoCreated || false
+  };
+  
+  console.log('Transformed budget:', transformed);
+  return transformed;
+};
+
 // Individual export functions
-export const getBudgets = async () => {
-  const response = await axiosInstance.get('/budgets');
-  return response.data;
+export const getBudgets = async (params?: GetBudgetsParams): Promise<Budget[]> => {
+  try {
+    console.log('Budget service getAll called with params:', params);
+    const response = await axiosInstance.get('/budgets', { params });
+    console.log('Budget service response:', response.data);
+    return response.data.map(transformBudget);
+  } catch (error) {
+    console.error('Budget service error:', error);
+    throw error;
+  }
 };
 
-export const getBudget = async (id: number) => {
+export const getBudget = async (id: number): Promise<Budget> => {
   const response = await axiosInstance.get(`/budgets/${id}`);
-  return response.data;
+  return transformBudget(response.data);
 };
 
-export const createBudget = async (budgetData: CreateBudgetDto) => {
+export const createBudget = async (budgetData: CreateBudgetDto): Promise<Budget> => {
   const response = await axiosInstance.post('/budgets', budgetData);
-  return response.data;
+  return transformBudget(response.data);
 };
 
-export const updateBudget = async (id: number, budgetData: Partial<CreateBudgetDto>) => {
+export const updateBudget = async (id: number, budgetData: Partial<CreateBudgetDto>): Promise<Budget> => {
   const response = await axiosInstance.patch(`/budgets/${id}`, budgetData);
-  return response.data;
+  return transformBudget(response.data);
 };
 
-export const deleteBudget = async (id: number) => {
-  const response = await axiosInstance.delete(`/budgets/${id}`);
-  return response.data;
+export const deleteBudget = async (id: number): Promise<void> => {
+  await axiosInstance.delete(`/budgets/${id}`);
 };
 
 // Default export for backward compatibility

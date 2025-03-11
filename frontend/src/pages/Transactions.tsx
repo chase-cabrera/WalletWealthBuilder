@@ -46,7 +46,7 @@ import { format } from 'date-fns';
 import { useLocation } from 'react-router-dom';
 import { formatCurrency } from '../utils/formatters';
 import categoryService from '../services/categoryService';
-import type { Category as CategoryType } from '../services/transactionService';
+import { Category } from '../types/Category';
 
 const Transactions: React.FC = () => {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -63,7 +63,6 @@ const Transactions: React.FC = () => {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
-  const [filters, setFilters] = useState<TransactionQuery>({});
   const [pageSize, setPageSize] = useState(50);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [deleteAllDialogOpen, setDeleteAllDialogOpen] = useState(false);
@@ -74,10 +73,10 @@ const Transactions: React.FC = () => {
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [editFormData, setEditFormData] = useState<Partial<Transaction>>({});
-  const [categories, setCategories] = useState<CategoryType[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [categoryDialogOpen, setCategoryDialogOpen] = useState(false);
-  const [categoryToEdit, setCategoryToEdit] = useState<CategoryType | null>(null);
-  const [categoryToDelete, setCategoryToDelete] = useState<CategoryType | null>(null);
+  const [categoryToEdit, setCategoryToEdit] = useState<Category | null>(null);
+  const [categoryToDelete, setCategoryToDelete] = useState<Category | null>(null);
   const [categoryDeleteDialogOpen, setCategoryDeleteDialogOpen] = useState(false);
   const [categoryDeleteError, setCategoryDeleteError] = useState<string | null>(null);
   const [newCategoryName, setNewCategoryName] = useState('');
@@ -91,6 +90,21 @@ const Transactions: React.FC = () => {
   
   const theme = useTheme();
   const location = useLocation();
+  const initialFilters = location.state?.filters || {};
+  
+  const [filters, setFilters] = useState<TransactionQuery>({
+    startDate: initialFilters.startDate || '',
+    endDate: initialFilters.endDate || '',
+    category: initialFilters.category || 'all',
+    type: initialFilters.type || 'all',
+    minAmount: initialFilters.minAmount || undefined,
+    maxAmount: initialFilters.maxAmount || undefined,
+    search: initialFilters.search || '',
+    sortBy: initialFilters.sortBy || 'date',
+    sortOrder: (initialFilters.sortOrder as 'ASC' | 'DESC') || 'DESC',
+    page: 1,
+    pageSize: pageSize
+  });
 
   // Memoize the account map for better performance
   const accountMap = useMemo(() => {
@@ -100,30 +114,71 @@ const Transactions: React.FC = () => {
     }, {} as Record<number, string>);
   }, [accounts]);
 
-  const fetchTransactions = useCallback(async (pageNum = 1, newFilters?: TransactionQuery) => {
+  const fetchTransactions = useCallback(async (page: number, filters: TransactionQuery = {}) => {
     setLoading(true);
-    
     try {
-      const currentFilters = newFilters || filters;
-      const queryParams: TransactionQuery = {
-        ...currentFilters,
-        page: pageNum,
-        pageSize: pageSize
-      };
+      console.log('Fetching transactions with filters - DETAILED:', {
+        ...filters,
+        page,
+        pageSize,
+        startDate: filters.startDate,
+        endDate: filters.endDate,
+        startDateType: typeof filters.startDate,
+        endDateType: typeof filters.endDate
+      });
+
+      const response = await transactionService.getAll({
+        ...filters,
+        page,
+        pageSize
+      });
       
-      const result = await transactionService.getAll(queryParams);
-      
-      setTransactions(result.data);
-      setTotalCount(result.total);
-      setTotalPages(result.totalPages);
-      setPage(result.page);
+      console.log('Received transactions response:', {
+        data: response.data.length,
+        total: response.total,
+        page: response.page,
+        firstTransaction: response.data[0],
+        lastTransaction: response.data[response.data.length - 1]
+      });
+
+      setTransactions(response.data);
+      setTotalCount(response.total);
+      setTotalPages(response.totalPages);
+      setPage(response.page);
     } catch (error) {
-      console.error('Failed to fetch transactions:', error);
-      setError('Failed to load transactions. Please try again later.');
+      console.error('Error fetching transactions:', error);
+      setError('Failed to fetch transactions');
     } finally {
       setLoading(false);
     }
-  }, [filters, pageSize]);
+  }, [pageSize]);
+
+  useEffect(() => {
+    console.log('Initializing filters from location state:', initialFilters);
+    
+    setFilters({
+      startDate: initialFilters.startDate || '',
+      endDate: initialFilters.endDate || '',
+      category: initialFilters.category || 'all',
+      type: initialFilters.type || 'all',
+      minAmount: initialFilters.minAmount || undefined,
+      maxAmount: initialFilters.maxAmount || undefined,
+      search: initialFilters.search || '',
+      sortBy: initialFilters.sortBy || 'date',
+      sortOrder: (initialFilters.sortOrder as 'ASC' | 'DESC') || 'DESC',
+      page: 1,
+      pageSize: pageSize
+    });
+    
+    // If we have initial filters, fetch transactions immediately
+    if (initialFilters.startDate && initialFilters.endDate) {
+      fetchTransactions(1, {
+        ...initialFilters,
+        page: 1,
+        pageSize
+      });
+    }
+  }, [initialFilters, pageSize, fetchTransactions]);
 
   // New function to load more transactions (infinite scroll approach)
   const loadMoreTransactions = useCallback(async () => {
@@ -178,36 +233,15 @@ const Transactions: React.FC = () => {
   }, [fetchAccounts, fetchTransactions, fetchCategories]);
 
   useEffect(() => {
-    try {
-      // Parse query parameters
-      const params = new URLSearchParams(location.search);
-      const startDate = params.get('startDate');
-      const endDate = params.get('endDate');
-      const category = params.get('category');
-      
-      // If we have parameters, set filters and fetch transactions
-      if (startDate || endDate || category) {
-        const newFilters: TransactionQuery = { ...filters };
-        
-        if (startDate) newFilters.startDate = startDate;
-        if (endDate) newFilters.endDate = endDate;
-        if (category) newFilters.category = category;
-        
-        // Make sure we don't have any NaN values
-        Object.keys(newFilters).forEach(key => {
-          const k = key as keyof TransactionQuery;
-          if (newFilters[k] === 'NaN' || Number.isNaN(newFilters[k])) {
-            delete newFilters[k];
-          }
-        });
-        
-        setFilters(newFilters);
-        fetchTransactions(1, newFilters);
-      }
-    } catch (error) {
-      console.error('Error parsing URL parameters:', error);
+    if (location.state?.filters) {
+      const newFilters = {
+        ...filters,
+        ...location.state.filters
+      };
+      setFilters(newFilters);
+      fetchTransactions(1, newFilters);
     }
-  }, [location.search]);
+  }, [location.state]);
 
   const handlePageChange = (event: React.ChangeEvent<unknown>, value: number) => {
     setPage(value);
@@ -216,23 +250,10 @@ const Transactions: React.FC = () => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const handleSubmit = async (data: Partial<Transaction>) => {
+  const handleSubmit = async (transactionData: CreateTransactionDto) => {
     try {
-      // Convert Partial<Transaction> to CreateTransactionDto if needed
-      const transactionData: CreateTransactionDto = {
-        amount: data.amount ?? 0,
-        description: data.description ?? '',
-        vendor: data.vendor ?? '',
-        purchaser: data.purchaser ?? '',
-        note: data.note ?? '',
-        date: data.date ?? format(new Date(), 'yyyy-MM-dd'),
-        type: (data.type as 'INCOME' | 'EXPENSE') ?? 'EXPENSE',
-        category: getCategoryName(data.category),
-        accountId: data.accountId
-      };
-      
       await transactionService.create(transactionData);
-      fetchTransactions();
+      fetchTransactions(1);
       setIsFormOpen(false);
       showSnackbar('Transaction added successfully', 'success');
     } catch (error) {
@@ -297,6 +318,7 @@ const Transactions: React.FC = () => {
 
   const handleBatchUpdate = async (ids: number[], updates: Partial<Transaction>) => {
     try {
+      // Convert Transaction type to CreateTransactionDto type
       const updateData: Partial<CreateTransactionDto> = {
         ...(updates.amount !== undefined && { amount: updates.amount }),
         ...(updates.description !== undefined && { description: updates.description }),
@@ -304,14 +326,24 @@ const Transactions: React.FC = () => {
         ...(updates.purchaser !== undefined && { purchaser: updates.purchaser }),
         ...(updates.note !== undefined && { note: updates.note }),
         ...(updates.date !== undefined && { date: updates.date }),
-        ...(updates.type !== undefined && { type: updates.type as 'INCOME' | 'EXPENSE' }),
-        ...(updates.category !== undefined && { category: getCategoryName(updates.category) }),
-        ...(updates.accountId !== undefined && { accountId: updates.accountId }),
+        ...(updates.type !== undefined && { 
+          type: updates.type as 'INCOME' | 'EXPENSE'
+        }),
+        ...(updates.category !== undefined && { 
+          category: typeof updates.category === 'string' 
+            ? updates.category 
+            : updates.category.name 
+        }),
+        ...(updates.accountId !== undefined && { accountId: updates.accountId })
       };
+
+      // Update each transaction
+      for (const id of ids) {
+        await transactionService.update(id, updateData);
+      }
       
-      await Promise.all(ids.map(id => transactionService.update(id, updateData)));
-      fetchTransactions(page);
-      showSnackbar(`${ids.length} transactions updated successfully`, 'success');
+      fetchTransactions(1);
+      showSnackbar('Transactions updated successfully', 'success');
     } catch (error) {
       console.error('Failed to update transactions:', error);
       showSnackbar('Failed to update transactions', 'error');
@@ -325,7 +357,7 @@ const Transactions: React.FC = () => {
   };
 
   const handleImportSuccess = () => {
-    fetchTransactions();
+    fetchTransactions(1);
     setSnackbar({
       open: true,
       message: 'Transactions imported successfully',
@@ -364,9 +396,7 @@ const Transactions: React.FC = () => {
     setIsDeleting(true);
     try {
       await transactionService.deleteAll();
-      // Refresh the transactions list
-      fetchTransactions();
-      // Show success message
+      fetchTransactions(1);
       setSnackbar({
         open: true,
         message: 'All transactions deleted successfully',
@@ -400,7 +430,7 @@ const Transactions: React.FC = () => {
       const transaction = transactions.find(t => t.id === currentTransactionId);
       if (transaction) {
         // Check if the category exists in our categories list
-        const categoryExists = categories.some((c: CategoryType) => c.name === transaction.category);
+        const categoryExists = categories.some((c: Category) => c.name === transaction.category);
         
         setEditFormData({
           ...transaction,
@@ -441,8 +471,13 @@ const Transactions: React.FC = () => {
     }
   };
 
-  const handleSelectAll = (event: React.ChangeEvent<HTMLInputElement>) => {
-    setSelectedTransactions(event.target.checked ? transactions.map(t => t.id) : []);
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      const allIds = transactions.map(t => t.id);
+      setSelectedTransactions(allIds);
+    } else {
+      setSelectedTransactions([]);
+    }
   };
 
   const handleBulkEditOpen = () => {
@@ -516,7 +551,7 @@ const Transactions: React.FC = () => {
     }
   };
 
-  const handleEditCategory = (category: CategoryType) => {
+  const handleEditCategory = (category: Category) => {
     setCategoryToEdit(category);
     setNewCategoryName(category.name);
     setNewCategoryType(category.type as 'INCOME' | 'EXPENSE' | 'SAVING' | 'INVESTMENT');
@@ -542,7 +577,7 @@ const Transactions: React.FC = () => {
     }
   };
 
-  const handleDeleteCategoryClick = (category: CategoryType) => {
+  const handleDeleteCategoryClick = (category: Category) => {
     setCategoryToDelete(category);
     setCategoryDeleteDialogOpen(true);
     setCategoryDeleteError(null);
@@ -571,7 +606,7 @@ const Transactions: React.FC = () => {
     }
   };
 
-  const handleStartInlineEdit = (category: CategoryType) => {
+  const handleStartInlineEdit = (category: Category) => {
     setInlineEditCategoryId(category.id);
     setInlineEditName(category.name);
     setInlineEditType(category.type as 'INCOME' | 'EXPENSE' | 'SAVING' | 'INVESTMENT');
@@ -657,6 +692,12 @@ const Transactions: React.FC = () => {
   const isCategoryObject = (category: string | CategoryObject): category is CategoryObject => {
     return typeof category === 'object' && category !== null && 'id' in category;
   };
+
+  // Add handleSearch function
+  const handleSearch = useCallback((searchFilters: TransactionQuery) => {
+    setFilters(searchFilters);
+    fetchTransactions(1, searchFilters);
+  }, []);
 
   return (
     <Box sx={{ p: 3 }}>
@@ -745,202 +786,24 @@ const Transactions: React.FC = () => {
         />
       </Paper>
       
-      {error && (
-        <Alert severity="error" sx={{ mb: 3 }}>
-          {error}
-        </Alert>
+      {loading ? (
+        <CircularProgress />
+      ) : error ? (
+        <Alert severity="error">{error}</Alert>
+      ) : transactions.length === 0 ? (
+        <Typography>No transactions found</Typography>
+      ) : (
+        <TransactionList 
+          transactions={transactions}
+          accounts={accounts}
+          selectedTransactions={selectedTransactions}
+          onSelectTransaction={handleSelectTransaction}
+          onSelectAll={handleSelectAll}
+          onEdit={handleEdit}
+          onDelete={handleDelete}
+          onBatchUpdate={handleBatchUpdate}
+        />
       )}
-      
-      <Paper sx={{ width: '100%', mb: 3 }}>
-        {loading && transactions.length === 0 ? (
-          <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
-            <CircularProgress />
-          </Box>
-        ) : (
-          <>
-            <TableContainer component={Paper}>
-              <Table>
-                <TableHead>
-                  <TableRow>
-                    <TableCell padding="checkbox">
-                      <Checkbox
-                        indeterminate={selectedTransactions.length > 0 && selectedTransactions.length < transactions.length}
-                        checked={transactions.length > 0 && selectedTransactions.length === transactions.length}
-                        onChange={handleSelectAll}
-                      />
-                    </TableCell>
-                    <TableCell>Date</TableCell>
-                    <TableCell>Description</TableCell>
-                    <TableCell>Category</TableCell>
-                    <TableCell align="right">Amount</TableCell>
-                    <TableCell>Account</TableCell>
-                    <TableCell align="right">Actions</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {transactions.map((transaction) => {
-                    const isItemSelected = selectedTransactions.includes(transaction.id);
-                    
-                    return (
-                      <TableRow
-                        key={transaction.id}
-                        selected={isItemSelected}
-                        hover
-                      >
-                        <TableCell padding="checkbox">
-                          <Checkbox
-                            checked={isItemSelected}
-                            onChange={(event) => handleSelectTransaction(transaction.id, event.target.checked)}
-                          />
-                        </TableCell>
-                        <TableCell>{new Date(transaction.date).toLocaleDateString()}</TableCell>
-                        <TableCell>{transaction.description}</TableCell>
-                        <TableCell>
-                          <Chip 
-                            label={getCategoryName(transaction.category)} 
-                            size="small"
-                            sx={{ 
-                              bgcolor: 'rgba(0, 0, 0, 0.08)',
-                              borderRadius: '16px'
-                            }}
-                          />
-                        </TableCell>
-                        <TableCell align="right" sx={{ 
-                          color: getCategoryChipColor(transaction.type),
-                          fontWeight: 'medium'
-                        }}>
-                          {getTransactionTypeIcon(transaction.type)} {formatCurrency(transaction.amount)}
-                        </TableCell>
-                        <TableCell>
-                          {transaction.accountId && accountMap[transaction.accountId] 
-                            ? accountMap[transaction.accountId] 
-                            : (transaction.account?.name || "No Account")}
-                        </TableCell>
-                        <TableCell align="right">
-                          <IconButton
-                            aria-label="more"
-                            onClick={(e) => handleMenuOpen(e, transaction.id)}
-                          >
-                            <MoreIcon />
-                          </IconButton>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </TableContainer>
-            
-            {totalPages > 1 && (
-              <Box sx={{ 
-                display: 'flex', 
-                justifyContent: 'space-between', 
-                alignItems: 'center',
-                p: 2,
-                borderTop: `1px solid ${theme.palette.divider}`,
-                backgroundColor: theme.palette.background.default
-              }}>
-                <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                  <Typography variant="body2" color="text.secondary" sx={{ mr: 2 }}>
-                    Rows per page:
-                  </Typography>
-                  <TextField
-                    select
-                    value={pageSize}
-                    onChange={handlePageSizeChange}
-                    variant="outlined"
-                    size="small"
-                    sx={{ width: 100, mr: 2 }}
-                  >
-                    {[10, 25, 50, 100, 500, 1000].map((size) => (
-                      <MenuItem key={size} value={size}>
-                        {size}
-                      </MenuItem>
-                    ))}
-                  </TextField>
-                  <Typography variant="body2" color="text.secondary">
-                    Page {page} of {totalPages} ({totalCount} total transactions)
-                  </Typography>
-                </Box>
-                <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                  <Button 
-                    disabled={page <= 1}
-                    onClick={() => handlePageChange({} as React.ChangeEvent<unknown>, 1)}
-                    sx={{ minWidth: 'auto', mr: 1 }}
-                  >
-                    First
-                  </Button>
-                  <Button 
-                    disabled={page <= 1}
-                    onClick={() => handlePageChange({} as React.ChangeEvent<unknown>, page - 1)}
-                    sx={{ minWidth: 'auto', mr: 1 }}
-                  >
-                    Prev
-                  </Button>
-                  <Pagination 
-                    count={totalPages} 
-                    page={page} 
-                    onChange={handlePageChange} 
-                    color="primary"
-                    siblingCount={1}
-                    boundaryCount={1}
-                    size="medium"
-                    hidePrevButton
-                    hideNextButton
-                  />
-                  <Button 
-                    disabled={page >= totalPages}
-                    onClick={() => handlePageChange({} as React.ChangeEvent<unknown>, page + 1)}
-                    sx={{ minWidth: 'auto', ml: 1 }}
-                  >
-                    Next
-                  </Button>
-                  <Button 
-                    disabled={page >= totalPages}
-                    onClick={() => handlePageChange({} as React.ChangeEvent<unknown>, totalPages)}
-                    sx={{ minWidth: 'auto', ml: 1 }}
-                  >
-                    Last
-                  </Button>
-                </Box>
-              </Box>
-            )}
-            
-            {totalPages <= 1 && (
-              <Box sx={{ 
-                p: 2, 
-                display: 'flex', 
-                justifyContent: 'flex-end',
-                borderTop: `1px solid ${theme.palette.divider}`,
-                backgroundColor: theme.palette.background.default
-              }}>
-                <Typography variant="body2" color="text.secondary">
-                  Showing {transactions.length} of {totalCount} transactions
-                </Typography>
-              </Box>
-            )}
-            
-            {/* Load More Button (Alternative to pagination) */}
-            {totalPages > 1 && page < totalPages && (
-              <Box sx={{ 
-                display: 'flex', 
-                justifyContent: 'center', 
-                p: 2,
-                borderTop: `1px solid ${theme.palette.divider}`
-              }}>
-                <Button 
-                  variant="outlined" 
-                  onClick={loadMoreTransactions}
-                  disabled={isLoadingMore}
-                  startIcon={isLoadingMore ? <CircularProgress size={20} /> : null}
-                >
-                  {isLoadingMore ? 'Loading...' : 'Load More Transactions'}
-                </Button>
-              </Box>
-            )}
-          </>
-        )}
-      </Paper>
       
       {isFormOpen && (
         <TransactionForm 
@@ -949,10 +812,13 @@ const Transactions: React.FC = () => {
             setIsFormOpen(false);
             setSelectedTransaction(undefined);
           }}
-          onSubmit={selectedTransaction 
-            ? (data: any) => handleEdit(data)
-            : handleSubmit
-          }
+          onSubmit={async (data: Partial<Transaction> | CreateTransactionDto) => {
+            if (selectedTransaction) {
+              await handleEdit(data as Partial<Transaction>);
+            } else {
+              await handleSubmit(data as CreateTransactionDto);
+            }
+          }}
           transaction={selectedTransaction}
           accounts={accounts}
         />

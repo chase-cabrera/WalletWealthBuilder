@@ -1,5 +1,5 @@
 import axiosInstance from './axiosConfig';
-import { Category } from './transactionService';
+import { Category } from '../types/Category';
 
 export interface CreateCategoryDto {
   name: string;
@@ -25,32 +25,13 @@ const getById = async (id: number): Promise<Category> => {
   return response.data;
 };
 
-const create = async (categoryData: CreateCategoryDto): Promise<Category> => {
-  const response = await axiosInstance.post('/categories', categoryData);
+const create = async (category: Partial<Category>): Promise<Category> => {
+  const response = await axiosInstance.post('/categories', category);
   return response.data;
 };
 
-const update = async (id: number, categoryData: UpdateCategoryDto): Promise<Category> => {
-  const validData: UpdateCategoryDto = {};
-  
-  if (categoryData.name !== undefined && categoryData.name.trim() !== '') {
-    validData.name = categoryData.name.trim();
-  }
-  
-  if (categoryData.type !== undefined) {
-    validData.type = categoryData.type;
-  }
-  
-  if (categoryData.description !== undefined) {
-    validData.description = categoryData.description;
-  }
-  
-  if (categoryData.isDefault !== undefined) {
-    validData.isDefault = categoryData.isDefault;
-  }
-  
-  console.log('Sending category update:', validData);
-  const response = await axiosInstance.patch(`/categories/${id}`, validData);
+const update = async (id: number, category: Partial<Category>): Promise<Category> => {
+  const response = await axiosInstance.patch(`/categories/${id}`, category);
   return response.data;
 };
 

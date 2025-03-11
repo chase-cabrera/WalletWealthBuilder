@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -13,12 +13,11 @@ import {
   IconButton,
   Typography,
 } from '@mui/material';
-import { DatePicker } from '@mui/x-date-pickers/DatePicker';
-import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
-import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
+import { format, startOfMonth, endOfMonth } from 'date-fns';
 import CloseIcon from '@mui/icons-material/Close';
 import { Budget, CreateBudgetDto } from '../../services/budgetService';
-import { format } from 'date-fns';
+import { Category } from '../../types/Category';
+import categoryService from '../../services/categoryService';
 
 interface BudgetFormProps {
   open: boolean;
@@ -27,23 +26,11 @@ interface BudgetFormProps {
   budget?: Budget;
 }
 
-const CATEGORIES = [
-  'Food',
-  'Transportation',
-  'Housing',
-  'Utilities',
-  'Entertainment',
-  'Healthcare',
-  'Shopping',
-  'Other',
-];
-
-const PERIODS = [
-  { value: 'WEEKLY', label: 'Weekly' },
-  { value: 'MONTHLY', label: 'Monthly' },
-  { value: 'QUARTERLY', label: 'Quarterly' },
-  { value: 'YEARLY', label: 'Yearly' },
-];
+interface FormData {
+  category: string;
+  amount: number;
+  description?: string;
+}
 
 const BudgetForm: React.FC<BudgetFormProps> = ({
   open,
@@ -54,37 +41,62 @@ const BudgetForm: React.FC<BudgetFormProps> = ({
   const theme = useTheme();
   const fullScreen = useMediaQuery(theme.breakpoints.down('sm'));
   
-  const [formData, setFormData] = React.useState<CreateBudgetDto>({
-    category: CATEGORIES[0],
-    limit: 0,
-    period: 'MONTHLY',
-    startDate: new Date().toISOString().split('T')[0],
-    endDate: new Date(new Date().setMonth(new Date().getMonth() + 1)).toISOString().split('T')[0],
+  const [formData, setFormData] = useState<FormData>({
+    category: '',
+    amount: 0,
+    description: ''
   });
+
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchCategories = async () => {
+      try {
+        setLoading(true);
+        const response = await categoryService.getAll();
+        setCategories(response);
+      } catch (err) {
+        console.error('Error fetching categories:', err);
+        setError('Failed to load categories');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchCategories();
+  }, []);
 
   useEffect(() => {
     if (budget) {
       setFormData({
-        category: budget.category,
-        limit: budget.limit,
-        period: budget.period,
-        startDate: budget.startDate,
-        endDate: budget.endDate,
+        category: typeof budget.category === 'string' ? budget.category : budget.category.name,
+        amount: budget.amount,
+        description: budget.description || ''
       });
     } else {
       setFormData({
-        category: CATEGORIES[0],
-        limit: 0,
-        period: 'MONTHLY',
-        startDate: new Date().toISOString().split('T')[0],
-        endDate: new Date(new Date().setMonth(new Date().getMonth() + 1)).toISOString().split('T')[0],
+        category: '',
+        amount: 0,
+        description: ''
       });
     }
   }, [budget, open]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onSubmit(formData);
+    
+    // Automatically set the start and end dates to current month
+    const now = new Date();
+    const startDate = format(startOfMonth(now), 'yyyy-MM-dd');
+    const endDate = format(endOfMonth(now), 'yyyy-MM-dd');
+
+    onSubmit({
+      ...formData,
+      startDate,
+      endDate,
+    });
   };
 
   return (
@@ -94,12 +106,6 @@ const BudgetForm: React.FC<BudgetFormProps> = ({
       fullScreen={fullScreen}
       fullWidth
       maxWidth="sm"
-      PaperProps={{
-        sx: {
-          borderRadius: { xs: 0, sm: 2 },
-          m: { xs: 0, sm: 2 },
-        }
-      }}
     >
       <DialogTitle sx={{ 
         display: 'flex', 
@@ -125,20 +131,22 @@ const BudgetForm: React.FC<BudgetFormProps> = ({
               required
               fullWidth
               variant="outlined"
-              autoFocus
+              disabled={loading}
+              error={!!error}
+              helperText={error}
             >
-              {CATEGORIES.map((category) => (
-                <MenuItem key={category} value={category}>
-                  {category}
+              {categories.map((category) => (
+                <MenuItem key={category.id} value={category.id}>
+                  {category.name}
                 </MenuItem>
               ))}
             </TextField>
             
             <TextField
-              label="Budget Limit"
+              label="Monthly Budget Amount"
               type="number"
-              value={formData.limit}
-              onChange={(e) => setFormData({ ...formData, limit: parseFloat(e.target.value) })}
+              value={formData.amount}
+              onChange={(e) => setFormData({ ...formData, amount: parseFloat(e.target.value) })}
               required
               fullWidth
               variant="outlined"
@@ -148,77 +156,20 @@ const BudgetForm: React.FC<BudgetFormProps> = ({
             />
             
             <TextField
-              select
-              label="Period"
-              value={formData.period}
-              onChange={(e) => setFormData({ ...formData, period: e.target.value })}
-              required
+              label="Description (Optional)"
+              value={formData.description}
+              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
               fullWidth
               variant="outlined"
-            >
-              {PERIODS.map((period) => (
-                <MenuItem key={period.value} value={period.value}>
-                  {period.label}
-                </MenuItem>
-              ))}
-            </TextField>
-            
-            <LocalizationProvider dateAdapter={AdapterDateFns}>
-              <DatePicker
-                label="Start Date"
-                value={formData.startDate ? new Date(formData.startDate) : null}
-                onChange={(date) => {
-                  if (date) {
-                    setFormData({ 
-                      ...formData, 
-                      startDate: format(date, 'yyyy-MM-dd')
-                    });
-                  }
-                }}
-                slotProps={{
-                  textField: {
-                    variant: 'outlined',
-                    fullWidth: true,
-                    required: true,
-                  },
-                }}
-              />
-            </LocalizationProvider>
-            
-            <LocalizationProvider dateAdapter={AdapterDateFns}>
-              <DatePicker
-                label="End Date"
-                value={formData.endDate ? new Date(formData.endDate) : null}
-                onChange={(date) => {
-                  if (date) {
-                    setFormData({ 
-                      ...formData, 
-                      endDate: format(date, 'yyyy-MM-dd')
-                    });
-                  }
-                }}
-                slotProps={{
-                  textField: {
-                    variant: 'outlined',
-                    fullWidth: true,
-                    required: true,
-                  },
-                }}
-              />
-            </LocalizationProvider>
+              multiline
+              rows={3}
+            />
           </Box>
         </DialogContent>
-        <DialogActions sx={{ px: 3, py: 2 }}>
-          <Button onClick={onClose} color="inherit">
-            Cancel
-          </Button>
-          <Button 
-            type="submit" 
-            variant="contained" 
-            color="primary"
-            disableElevation
-          >
-            {budget ? 'Update' : 'Add'}
+        <DialogActions>
+          <Button onClick={onClose}>Cancel</Button>
+          <Button type="submit" variant="contained" color="primary">
+            {budget ? 'Save Changes' : 'Create Budget'}
           </Button>
         </DialogActions>
       </form>

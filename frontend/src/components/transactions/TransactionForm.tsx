@@ -21,6 +21,7 @@ import {
   Select,
   FormHelperText,
   Stack,
+  Alert,
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import AddIcon from '@mui/icons-material/Add';
@@ -33,6 +34,8 @@ import { format, parseISO } from 'date-fns';
 import { Account } from '../../services/accountService';
 import categoryService from '../../services/categoryService';
 import { CategoryObject } from '../../types/Transaction';
+import { Category as CategoryType } from '../../types/Category';
+import { DEFAULT_CATEGORIES } from '../../constants/categories';
 
 // Helper function to safely get category name
 const getCategoryName = (category: any): string => {
@@ -89,7 +92,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
   const theme = useTheme();
   const fullScreen = useMediaQuery(theme.breakpoints.down('sm'));
   const [selectedDate, setSelectedDate] = useState<Date | null>(new Date());
-  const [categories, setCategories] = useState<Category[]>([]);
+  const [categories, setCategories] = useState<CategoryType[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [newCategoryName, setNewCategoryName] = useState<string>('');
@@ -120,23 +123,9 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
       } catch (error) {
         console.error('Failed to fetch categories:', error);
         setError('Failed to load categories. Using default categories instead.');
-        // Fallback to default categories if API call fails
-        setCategories([
-          { id: 1, name: 'Food & Dining', type: 'EXPENSE', isDefault: true, createdAt: '', updatedAt: '' },
-          { id: 2, name: 'Shopping', type: 'EXPENSE', isDefault: true, createdAt: '', updatedAt: '' },
-          { id: 3, name: 'Housing', type: 'EXPENSE', isDefault: true, createdAt: '', updatedAt: '' },
-          { id: 4, name: 'Transportation', type: 'EXPENSE', isDefault: true, createdAt: '', updatedAt: '' },
-          { id: 5, name: 'Entertainment', type: 'EXPENSE', isDefault: true, createdAt: '', updatedAt: '' },
-          { id: 6, name: 'Health & Fitness', type: 'EXPENSE', isDefault: true, createdAt: '', updatedAt: '' },
-          { id: 7, name: 'Personal Care', type: 'EXPENSE', isDefault: true, createdAt: '', updatedAt: '' },
-          { id: 8, name: 'Education', type: 'EXPENSE', isDefault: true, createdAt: '', updatedAt: '' },
-          { id: 9, name: 'Travel', type: 'EXPENSE', isDefault: true, createdAt: '', updatedAt: '' },
-          { id: 10, name: 'Gifts & Donations', type: 'EXPENSE', isDefault: true, createdAt: '', updatedAt: '' },
-          { id: 11, name: 'Bills & Utilities', type: 'EXPENSE', isDefault: true, createdAt: '', updatedAt: '' },
-          { id: 12, name: 'Income', type: 'INCOME', isDefault: true, createdAt: '', updatedAt: '' },
-          { id: 13, name: 'Taxes', type: 'EXPENSE', isDefault: true, createdAt: '', updatedAt: '' },
-          { id: 14, name: 'Other', type: 'EXPENSE', isDefault: true, createdAt: '', updatedAt: '' },
-        ]);
+        
+        // Use default categories from constants
+        setCategories(DEFAULT_CATEGORIES);
       } finally {
         setLoading(false);
       }
@@ -269,23 +258,20 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
         fullWidth
       >
         <DialogTitle>
-          {transaction ? 'Edit Transaction' : 'Add Transaction'}
-          {onClose && (
-            <IconButton
-              aria-label="close"
-              onClick={onClose}
-              sx={{
-                position: 'absolute',
-                right: 8,
-                top: 8,
-              }}
-            >
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Typography variant="h6">
+              {transaction ? 'Edit Transaction' : 'Add Transaction'}
+            </Typography>
+            <IconButton edge="end" color="inherit" onClick={onClose} aria-label="close">
               <CloseIcon />
             </IconButton>
-          )}
+          </Box>
         </DialogTitle>
         <form onSubmit={handleSubmit}>
-          <DialogContent dividers sx={{ p: 3 }}>
+          <DialogContent dividers>
+            <Alert severity="info" sx={{ mb: 2 }}>
+              A budget will be automatically created for this category if one doesn't exist for the current month.
+            </Alert>
             <Box>
               <Grid container spacing={3}>
                 <Grid item xs={12} md={6}>
@@ -412,29 +398,9 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
                   <TextField
                     select
                     label="Category"
-                    value={getCategoryName(formData.category)}
+                    value={formData.category}
                     onChange={(e) => setFormData({ ...formData, category: e.target.value })}
                     fullWidth
-                    sx={{ mb: 3 }}
-                    InputProps={{
-                      endAdornment: loading ? (
-                        <CircularProgress color="inherit" size={20} />
-                      ) : (
-                        <Tooltip title="Add new category">
-                          <IconButton 
-                            size="small" 
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setCategoryDialogOpen(true);
-                            }}
-                          >
-                            <AddIcon />
-                          </IconButton>
-                        </Tooltip>
-                      ),
-                    }}
-                    error={!!categoryError}
-                    helperText={categoryError}
                   >
                     {categories.map((category) => (
                       <MenuItem key={category.id} value={category.name}>

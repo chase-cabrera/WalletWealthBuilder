@@ -20,6 +20,7 @@ import { Add as AddIcon, Edit as EditIcon, Delete as DeleteIcon } from '@mui/ico
 import { format, parseISO } from 'date-fns';
 import BudgetForm from '../components/budgets/BudgetForm';
 import budgetService, { Budget, CreateBudgetDto } from '../services/budgetService';
+import { getCategoryDisplay } from '../utils/categoryUtils';
 
 const Budgets: React.FC = () => {
   const [budgets, setBudgets] = useState<Budget[]>([]);
@@ -77,8 +78,8 @@ const Budgets: React.FC = () => {
     }
   };
 
-  const calculateProgress = (spent: number, limit: number) => {
-    return Math.min((spent / limit) * 100, 100);
+  const calculateProgress = (spent: number, amount: number) => {
+    return (spent / amount) * 100;
   };
 
   const getProgressColor = (progress: number) => {
@@ -162,9 +163,10 @@ const Budgets: React.FC = () => {
       ) : (
         <Grid container spacing={3}>
           {budgets.map((budget) => {
-            const progress = calculateProgress(budget.spent, budget.limit);
+            const progress = calculateProgress(budget.spent, budget.amount);
             const progressColor = getProgressColor(progress);
-            const remaining = budget.limit - budget.spent;
+            const remaining = budget.amount - budget.spent;
+            const categoryName = typeof budget.category === 'string' ? budget.category : budget.category.name;
             
             return (
               <Grid item xs={12} sm={6} md={4} key={budget.id}>
@@ -183,16 +185,8 @@ const Budgets: React.FC = () => {
                   <CardContent sx={{ flexGrow: 1, pt: 2 }}>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                       <Typography variant="h6" component="div" sx={{ fontWeight: 'bold', mb: 1 }}>
-                        {budget.category}
+                        {categoryName}
                       </Typography>
-                      <Chip 
-                        label={getPeriodLabel(budget.period)} 
-                        size="small" 
-                        sx={{ 
-                          backgroundColor: 'rgba(0,0,0,0.05)',
-                          fontWeight: 500,
-                        }} 
-                      />
                     </Box>
                     
                     <Box sx={{ mt: 2 }}>
@@ -226,7 +220,7 @@ const Budgets: React.FC = () => {
                           Limit
                         </Typography>
                         <Typography variant="h6" component="div" sx={{ fontWeight: 'bold' }}>
-                          ${budget.limit.toFixed(2)}
+                          ${budget.amount.toFixed(2)}
                         </Typography>
                       </Box>
                     </Box>

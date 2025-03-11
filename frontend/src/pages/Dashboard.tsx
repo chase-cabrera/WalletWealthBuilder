@@ -232,12 +232,12 @@ const Dashboard: React.FC = () => {
           
           // Fetch recent transactions
           const recentData = await transactionService.getAll({ 
-            limit: 5,
+            pageSize: 5,
             sortBy: 'date',
-            sortDirection: 'desc'
+            sortOrder: 'DESC'
           });
           console.log("Dashboard fetched recent transactions:", recentData.data);
-          setRecentTransactions(recentData.data.slice(0, 5)); // Take only the first 5
+          setRecentTransactions(recentData.data);
         } else {
           // Use empty arrays for transactions if no accounts
           setTransactions([]);

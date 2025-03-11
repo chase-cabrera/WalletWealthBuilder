@@ -2,17 +2,8 @@ import axiosInstance from './axiosConfig';
 import axios from 'axios';
 import { API_URL } from '../config';
 import { CategoryObject } from '../types/Transaction';
-
-// Add the missing type definitions
-export interface Category {
-  id: number;
-  name: string;
-  description?: string;
-  isDefault: boolean;
-  type: 'INCOME' | 'EXPENSE';
-  createdAt: string;
-  updatedAt: string;
-}
+import { CATEGORIES } from '../constants/categories';
+import { Category } from '../types/Category';
 
 export interface Transaction {
   id: number;
@@ -49,37 +40,27 @@ export interface CreateTransactionDto {
 }
 
 export interface TransactionQuery {
+  page?: number;
+  pageSize?: number;
   startDate?: string;
   endDate?: string;
   type?: string;
   category?: string;
-  accountId?: number;
   minAmount?: number;
   maxAmount?: number;
-  limit?: number;
-  page?: number;
-  pageSize?: number;
   search?: string;
   sortBy?: string;
-  sortDirection?: 'asc' | 'desc';
+  sortOrder?: 'ASC' | 'DESC';
+  accountId?: number;
 }
 
-// Add the CATEGORIES constant at the top of the file
-const CATEGORIES = [
-  'Food & Dining',
-  'Shopping',
-  'Housing',
-  'Transportation',
-  'Utilities',
-  'Healthcare',
-  'Entertainment',
-  'Personal Care',
-  'Education',
-  'Travel',
-  'Gifts & Donations',
-  'Income',
-  'Other',
-];
+export interface PaginatedResponse<T> {
+  data: T[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}
 
 // Individual export functions
 export const getTransactions = async (filters = {}) => {
@@ -120,54 +101,22 @@ export const importFromCSV = async (data: any[]) => {
 };
 
 // Update the getAll method to remove console logs
-const getAll = async (pageOrFilters?: number | TransactionQuery, pageSize = 50): Promise<{ 
-  data: Transaction[], 
-  total: number,
-  page: number,
-  pageSize: number,
-  totalPages: number
-}> => {
-  // If first parameter is a number, treat it as page number
-  if (typeof pageOrFilters === 'number') {
-    const response = await axiosInstance.get(`/transactions?page=${pageOrFilters}&pageSize=${pageSize}`);
-    return { 
-      data: response.data || [], 
-      total: parseInt(response.headers['x-total-count'] || '0', 10) || response.data?.length || 0,
-      page: parseInt(response.headers['x-page'] || pageOrFilters.toString(), 10),
-      pageSize: parseInt(response.headers['x-page-size'] || pageSize.toString(), 10),
-      totalPages: parseInt(response.headers['x-total-pages'] || '1', 10)
-    };
-  } 
-  // If it's an object, treat it as filters
-  else if (pageOrFilters && typeof pageOrFilters === 'object') {
-    // Additional safety check for NaN values
-    const safeFilters = { ...pageOrFilters };
-    Object.keys(safeFilters).forEach(key => {
-      const k = key as keyof TransactionQuery;
-      if (safeFilters[k] === 'NaN' || Number.isNaN(safeFilters[k])) {
-        delete safeFilters[k];
-      }
-    });
-    
-    const response = await axiosInstance.get('/transactions', { params: safeFilters });
-    return { 
-      data: response.data || [], 
-      total: parseInt(response.headers['x-total-count'] || '0', 10) || response.data?.length || 0,
-      page: parseInt(response.headers['x-page'] || (safeFilters.page?.toString() || '1'), 10),
-      pageSize: parseInt(response.headers['x-page-size'] || (safeFilters.pageSize?.toString() || '50'), 10),
-      totalPages: parseInt(response.headers['x-total-pages'] || '1', 10)
-    };
-  } 
-  // Default case - no parameters
-  else {
-    const response = await axiosInstance.get('/transactions');
-    return { 
-      data: response.data || [], 
-      total: parseInt(response.headers['x-total-count'] || '0', 10) || response.data?.length || 0,
-      page: parseInt(response.headers['x-page'] || '1', 10),
-      pageSize: parseInt(response.headers['x-page-size'] || '50', 10),
-      totalPages: parseInt(response.headers['x-total-pages'] || '1', 10)
-    };
+const getAll = async (params: TransactionQuery = {}): Promise<PaginatedResponse<Transaction>> => {
+  console.log('TransactionService - getAll called with params:', {
+    ...params,
+    startDate: params.startDate,
+    endDate: params.endDate,
+    startDateType: typeof params.startDate,
+    endDateType: typeof params.endDate
+  });
+  
+  try {
+    const response = await axiosInstance.get('/transactions', { params });
+    console.log('TransactionService - API response:', response.data);
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching transactions:', error);
+    throw error;
   }
 };
 
@@ -184,18 +133,25 @@ const deleteAll = async (): Promise<void> => {
   });
 };
 
-// Default export for backward compatibility
-const transactionService = {
-  getAll,
-  getById: getTransaction,
-  create: createTransaction,
-  update: updateTransaction,
-  delete: deleteTransaction,
-  deleteAll,
-  importFromCSV,
+const importTransactions = async (data: any[]) => {
+  try {
+    const response = await axiosInstance.post(`${API_URL}/transactions/import`, data);
+    return response.data;
+  } catch (error) {
+    console.error('Error importing transactions:', error);
+    throw error;
+  }
 };
 
-export default transactionService;
+const getUniqueCategories = async () => {
+  try {
+    const response = await axiosInstance.get(`${API_URL}/transactions/categories`);
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching unique categories:', error);
+    throw error;
+  }
+};
 
 /**
  * Gets transactions for net worth calculations
@@ -220,18 +176,28 @@ export const getTransactionsForNetWorth = async (params?: any) => {
 
 export const getCategories = async (): Promise<string[]> => {
   try {
-    // First check if the endpoint exists by making a request
     const response = await axiosInstance.get('/transactions/categories');
-    
-    // Make sure we got an array back
-    if (Array.isArray(response.data)) {
-      return response.data;
-    } else {
-      return CATEGORIES;
-    }
+    return Array.isArray(response.data) ? response.data : [...CATEGORIES];
   } catch (error) {
-    return CATEGORIES;
+    return [...CATEGORIES];
   }
 };
 
-export type { CategoryObject }; 
+// Single declaration of transactionService
+const transactionService = {
+  getAll,
+  getById: getTransaction,
+  create: createTransaction,
+  update: updateTransaction,
+  delete: deleteTransaction,
+  deleteAll,
+  importFromCSV,
+  importTransactions,
+  getUniqueCategories
+};
+
+// Single default export
+export default transactionService;
+
+// Export all types together
+export type { Category, CategoryObject }; 

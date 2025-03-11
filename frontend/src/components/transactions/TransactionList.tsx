@@ -44,6 +44,8 @@ import {
 } from '@mui/icons-material';
 import { Transaction, CategoryObject } from '../../types/Transaction';
 import { format, parseISO } from 'date-fns';
+import { Account } from '../../services/accountService';
+import { Transaction as TransactionService } from '../../services/transactionService';
 
 interface TransactionRowProps {
   transaction: Transaction;
@@ -57,19 +59,17 @@ interface TransactionRowProps {
   getAmountIcon: (transaction: Transaction) => JSX.Element;
   formatCurrency: (amount: number) => string;
   getCategoryDisplayName: (transaction: Transaction) => string;
-  hideActionDropdown?: boolean;
 }
 
 interface TransactionListProps {
   transactions: Transaction[];
-  onEdit: (transaction: Transaction) => void;
-  onDelete: (id: number) => void;
-  onBatchUpdate?: (ids: number[], updates: Partial<Transaction>) => void;
-  accounts: Record<number, string>;
-  hideActionDropdown?: boolean;
+  accounts: Account[];
   selectedTransactions: number[];
-  onSelectTransaction: (id: number, isSelected: boolean) => void;
-  onSelectAll: (isSelected: boolean) => void;
+  onSelectTransaction: (id: number, checked: boolean) => void;
+  onSelectAll: (checked: boolean) => void;
+  onEdit: (data: Partial<Transaction>) => Promise<void>;
+  onDelete: (id: number) => Promise<void>;
+  onBatchUpdate?: (ids: number[], updates: Partial<Transaction>) => Promise<void>;
 }
 
 const CATEGORIES = [
@@ -104,7 +104,6 @@ const TransactionRow = React.memo(({
   getAmountIcon,
   formatCurrency,
   getCategoryDisplayName,
-  hideActionDropdown = false
 }: TransactionRowProps) => {
   return (
     <>
@@ -146,27 +145,6 @@ const TransactionRow = React.memo(({
           {transaction.accountId && accounts[transaction.accountId] 
             ? accounts[transaction.accountId] 
             : 'No Account'}
-        </TableCell>
-        <TableCell align="right">
-          {!hideActionDropdown && (
-            <IconButton
-              aria-label="expand row"
-              size="small"
-              onClick={(e) => {
-                e.stopPropagation();
-                handleRowExpand(transaction.id);
-              }}
-            >
-              {isExpanded ? <ExpandLessIcon /> : <ExpandMoreIcon />}
-            </IconButton>
-          )}
-          <IconButton
-            aria-label="transaction menu"
-            size="small"
-            onClick={(e) => handleMenuOpen(e, transaction)}
-          >
-            <MoreIcon />
-          </IconButton>
         </TableCell>
       </TableRow>
       <TableRow>
@@ -224,14 +202,13 @@ const TransactionRow = React.memo(({
 
 const TransactionList: React.FC<TransactionListProps> = ({
   transactions,
-  onEdit,
-  onDelete,
-  onBatchUpdate,
   accounts,
-  hideActionDropdown = false,
   selectedTransactions,
   onSelectTransaction,
   onSelectAll,
+  onEdit,
+  onDelete,
+  onBatchUpdate
 }) => {
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
@@ -508,6 +485,14 @@ const TransactionList: React.FC<TransactionListProps> = ({
     handleBatchMenuClose();
   };
 
+  // Convert accounts array to Record<number, string>
+  const accountsMap = useMemo(() => {
+    return accounts.reduce((acc, account) => {
+      acc[account.id] = account.name;
+      return acc;
+    }, {} as Record<number, string>);
+  }, [accounts]);
+
   return (
     <div>
       <Toolbar
@@ -568,9 +553,8 @@ const TransactionList: React.FC<TransactionListProps> = ({
               <TableCell>Date</TableCell>
               <TableCell>Description</TableCell>
               <TableCell>Category</TableCell>
-              <TableCell>Account</TableCell>
               <TableCell align="right">Amount</TableCell>
-              <TableCell>Actions</TableCell>
+              <TableCell>Account</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
@@ -584,7 +568,7 @@ const TransactionList: React.FC<TransactionListProps> = ({
                   transaction={transaction}
                   isSelected={isItemSelected}
                   isExpanded={isExpanded}
-                  accounts={accounts}
+                  accounts={accountsMap}
                   handleSelectClick={handleSelectClick}
                   handleRowExpand={handleRowExpand}
                   handleMenuOpen={handleMenuOpen}
@@ -592,7 +576,6 @@ const TransactionList: React.FC<TransactionListProps> = ({
                   getAmountIcon={getAmountIcon}
                   formatCurrency={formatCurrency}
                   getCategoryDisplayName={getCategoryDisplayName}
-                  hideActionDropdown={hideActionDropdown}
                 />
               );
             })}
@@ -680,12 +663,9 @@ const TransactionList: React.FC<TransactionListProps> = ({
         open={Boolean(accountMenuAnchorEl)}
         onClose={handleAccountMenuClose}
       >
-        <MenuItem onClick={() => handleUpdateAccount(null)}>
-          No Account
-        </MenuItem>
-        {Object.entries(accounts).map(([id, name]) => (
-          <MenuItem key={id} onClick={() => handleUpdateAccount(Number(id))}>
-            {name}
+        {accounts.map((account) => (
+          <MenuItem key={account.id} onClick={() => handleUpdateAccount(account.id)}>
+            {account.name}
           </MenuItem>
         ))}
       </Menu>

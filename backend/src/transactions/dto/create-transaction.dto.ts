@@ -2,6 +2,11 @@ import { IsNotEmpty, IsNumber, IsOptional, IsString, IsDateString } from 'class-
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateTransactionDto {
+  @ApiProperty({ description: 'Transaction date (YYYY-MM-DD)' })
+  @IsDateString()
+  @IsNotEmpty()
+  date: string;
+
   @ApiProperty({ description: 'Transaction amount' })
   @IsNumber()
   @IsNotEmpty()
@@ -17,37 +22,17 @@ export class CreateTransactionDto {
   @IsOptional()
   vendor?: string;
 
-  @ApiPropertyOptional({ description: 'Transaction purchaser' })
-  @IsString()
-  @IsOptional()
-  purchaser?: string;
-
-  @ApiPropertyOptional({ description: 'Transaction note' })
-  @IsString()
-  @IsOptional()
-  note?: string;
-
-  @ApiProperty({ description: 'Transaction type (INCOME or EXPENSE)' })
-  @IsString()
-  @IsNotEmpty()
-  type: string;
-
-  @ApiPropertyOptional({ description: 'Transaction category name' })
+  @ApiPropertyOptional({ description: 'Transaction category' })
   @IsString()
   @IsOptional()
   category?: string;
 
-  @ApiPropertyOptional({ description: 'Transaction category ID' })
-  @IsNumber()
-  @IsOptional()
-  categoryId?: number;
-
-  @ApiProperty({ description: 'Transaction date (YYYY-MM-DD)' })
-  @IsDateString()
+  @ApiProperty({ description: 'Transaction type (INCOME, EXPENSE, INVESTMENT, SAVING)' })
+  @IsString()
   @IsNotEmpty()
-  date: string;
+  type: string;
 
-  @ApiPropertyOptional({ description: 'Account ID for the transaction' })
+  @ApiPropertyOptional({ description: 'Account ID' })
   @IsNumber()
   @IsOptional()
   accountId?: number;
