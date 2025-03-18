@@ -504,6 +504,25 @@ const TransactionList: React.FC<TransactionListProps> = ({
     }, {} as Record<number, string>);
   }, [accounts]);
 
+  const calculateTotals = () => {
+    let income = 0;
+    let expenses = 0;
+    
+    transactions.forEach(transaction => {
+      if (transaction.amount > 0) {
+        income += transaction.amount;
+      } else {
+        expenses += Math.abs(transaction.amount);
+      }
+    });
+    
+    const net = income - expenses;
+    
+    return { income, expenses, net };
+  };
+
+  const { income: calculatedIncome, expenses: calculatedExpenses, net: calculatedNet } = calculateTotals();
+
   return (
     <div>
       <Toolbar
@@ -602,6 +621,41 @@ const TransactionList: React.FC<TransactionListProps> = ({
           </TableBody>
         </Table>
       </TableContainer>
+
+      {transactions.length > 0 && (
+        <Paper sx={{ p: 2, mb: 2, mt: 2 }}>
+          <Grid container spacing={2}>
+            <Grid item xs={12} sm={4}>
+              <Typography variant="subtitle2" color="text.secondary">
+                Total Income
+              </Typography>
+              <Typography variant="h6" color="success.main" sx={{ fontWeight: 'medium' }}>
+                {formatCurrency(calculatedIncome)}
+              </Typography>
+            </Grid>
+            <Grid item xs={12} sm={4}>
+              <Typography variant="subtitle2" color="text.secondary">
+                Total Expenses
+              </Typography>
+              <Typography variant="h6" color="error.main" sx={{ fontWeight: 'medium' }}>
+                {formatCurrency(calculatedExpenses)}
+              </Typography>
+            </Grid>
+            <Grid item xs={12} sm={4}>
+              <Typography variant="subtitle2" color="text.secondary">
+                Net
+              </Typography>
+              <Typography 
+                variant="h6" 
+                color={calculatedNet >= 0 ? 'success.main' : 'error.main'} 
+                sx={{ fontWeight: 'medium' }}
+              >
+                {calculatedNet >= 0 ? '+' : ''}{formatCurrency(calculatedNet)}
+              </Typography>
+            </Grid>
+          </Grid>
+        </Paper>
+      )}
 
       {/* Transaction Menu */}
       <Menu

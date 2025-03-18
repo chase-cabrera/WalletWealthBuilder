@@ -19,6 +19,7 @@ import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { TransactionQuery, getCategories } from '../../services/transactionService';
 import { Account } from '../../services/accountService';
 import { format, isValid } from 'date-fns';
+import { SelectChangeEvent } from '@mui/material/Select';
 
 interface TransactionFiltersProps {
   accounts: Account[];
@@ -72,6 +73,10 @@ const TransactionFilters: React.FC<TransactionFiltersProps> = ({
   const [activeFilters, setActiveFilters] = useState<string[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
   const [categoriesLoading, setCategoriesLoading] = useState<boolean>(false);
+  const [filters, setFilters] = useState({
+    ...initialFilters,
+    category: initialFilters.category || 'all'
+  });
 
   useEffect(() => {
     const fetchCategories = async () => {
@@ -109,7 +114,13 @@ const TransactionFilters: React.FC<TransactionFiltersProps> = ({
     setSearch(initialFilters.search || '');
     setSortBy(initialFilters.sortBy || 'date');
     setSortOrder(initialFilters.sortOrder || 'DESC');
-  }, [initialFilters]);
+    
+    // Also update the filters state
+    setFilters({
+      ...initialFilters,
+      category: initialFilters.category || 'all'
+    });
+  }, []);
 
   const applyFilters = () => {
     const filters: TransactionQuery = {};
@@ -212,6 +223,36 @@ const TransactionFilters: React.FC<TransactionFiltersProps> = ({
     setTimeout(applyFilters, 0);
   };
 
+  const handleCategoryChange = (event: SelectChangeEvent<string>) => {
+    const newCategory = event.target.value;
+    
+    // Update both state variables
+    setCategory(newCategory);
+    setFilters(prev => ({
+      ...prev,
+      category: newCategory
+    }));
+    
+    // Create a new filters object with all current values
+    const updatedFilters = {
+      startDate: startDate ? format(startDate, 'yyyy-MM-dd') : undefined,
+      endDate: endDate ? format(endDate, 'yyyy-MM-dd') : undefined,
+      type: type !== 'all' ? type : undefined,
+      category: newCategory !== 'all' ? newCategory : undefined,
+      accountId: accountId || undefined,
+      minAmount: minAmount ? parseFloat(minAmount) : undefined,
+      maxAmount: maxAmount ? parseFloat(maxAmount) : undefined,
+      search: search || undefined,
+      sortBy,
+      sortOrder
+    };
+    
+    // Call the filter callback with the complete filters object
+    if (onFilter) {
+      onFilter(updatedFilters);
+    }
+  };
+
   return (
     <Box>
       <Grid container spacing={2}>
@@ -258,8 +299,8 @@ const TransactionFilters: React.FC<TransactionFiltersProps> = ({
             <InputLabel id="category-label">Categories</InputLabel>
             <Select
               labelId="category-label"
-              value={category}
-              onChange={(e) => setCategory(e.target.value)}
+              value={filters.category}
+              onChange={handleCategoryChange}
               input={<OutlinedInput label="Categories" />}
               disabled={categoriesLoading}
             >

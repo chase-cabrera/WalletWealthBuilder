@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { 
   Box, 
   Typography, 
@@ -114,71 +114,45 @@ const Transactions: React.FC = () => {
     }, {} as Record<number, string>);
   }, [accounts]);
 
-  const fetchTransactions = useCallback(async (page: number, filters: TransactionQuery = {}) => {
+  const fetchTransactions = useCallback(async (pageNum = page, filterParams = filters) => {
     setLoading(true);
+    setError(null);
+    
     try {
-      console.log('Fetching transactions with filters - DETAILED:', {
-        ...filters,
-        page,
-        pageSize,
-        startDate: filters.startDate,
-        endDate: filters.endDate,
-        startDateType: typeof filters.startDate,
-        endDateType: typeof filters.endDate
-      });
-
       const response = await transactionService.getAll({
-        ...filters,
-        page,
-        pageSize
+        ...filterParams,
+        page: pageNum,
+        pageSize: pageSize
       });
       
-      console.log('Received transactions response:', {
-        data: response.data.length,
-        total: response.total,
-        page: response.page,
-        firstTransaction: response.data[0],
-        lastTransaction: response.data[response.data.length - 1]
-      });
-
       setTransactions(response.data);
       setTotalCount(response.total);
-      setTotalPages(response.totalPages);
-      setPage(response.page);
-    } catch (error) {
-      console.error('Error fetching transactions:', error);
-      setError('Failed to fetch transactions');
+      setTotalPages(Math.ceil(response.total / pageSize));
+      setPage(pageNum);
+    } catch (err) {
+      console.error('Failed to fetch transactions:', err);
+      setError('Failed to load transactions. Please try again.');
     } finally {
       setLoading(false);
     }
   }, [pageSize]);
 
+  const locationStateProcessed = useRef(false);
+
   useEffect(() => {
-    console.log('Initializing filters from location state:', initialFilters);
-    
-    setFilters({
-      startDate: initialFilters.startDate || '',
-      endDate: initialFilters.endDate || '',
-      category: initialFilters.category || 'all',
-      type: initialFilters.type || 'all',
-      minAmount: initialFilters.minAmount || undefined,
-      maxAmount: initialFilters.maxAmount || undefined,
-      search: initialFilters.search || '',
-      sortBy: initialFilters.sortBy || 'date',
-      sortOrder: (initialFilters.sortOrder as 'ASC' | 'DESC') || 'DESC',
-      page: 1,
-      pageSize: pageSize
-    });
-    
-    // If we have initial filters, fetch transactions immediately
-    if (initialFilters.startDate && initialFilters.endDate) {
-      fetchTransactions(1, {
-        ...initialFilters,
-        page: 1,
-        pageSize
-      });
+    // Only process location.state once when the component mounts
+    if (location.state?.filters && !locationStateProcessed.current) {
+      console.log('Processing location state filters once');
+      locationStateProcessed.current = true;
+      
+      const newFilters = {
+        ...filters,
+        ...location.state.filters
+      };
+      setFilters(newFilters);
+      fetchTransactions(1, newFilters);
     }
-  }, [initialFilters, pageSize, fetchTransactions]);
+  }, [location.state, filters, fetchTransactions]);
 
   // New function to load more transactions (infinite scroll approach)
   const loadMoreTransactions = useCallback(async () => {
@@ -231,17 +205,6 @@ const Transactions: React.FC = () => {
     fetchTransactions(1);
     fetchCategories();
   }, [fetchAccounts, fetchTransactions, fetchCategories]);
-
-  useEffect(() => {
-    if (location.state?.filters) {
-      const newFilters = {
-        ...filters,
-        ...location.state.filters
-      };
-      setFilters(newFilters);
-      fetchTransactions(1, newFilters);
-    }
-  }, [location.state]);
 
   const handlePageChange = (_event: unknown, newPage: number) => {
     setPage(newPage + 1); // Convert from 0-based to 1-based indexing
