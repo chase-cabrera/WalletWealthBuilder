@@ -243,9 +243,9 @@ const Transactions: React.FC = () => {
     }
   }, [location.state]);
 
-  const handlePageChange = (event: React.ChangeEvent<unknown>, value: number) => {
-    setPage(value);
-    fetchTransactions(value);
+  const handlePageChange = (_event: unknown, newPage: number) => {
+    setPage(newPage + 1); // Convert from 0-based to 1-based indexing
+    fetchTransactions(newPage + 1);
     // Scroll to top when changing pages
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -561,10 +561,13 @@ const Transactions: React.FC = () => {
     if (!categoryToEdit || !newCategoryName.trim()) return;
     
     try {
-      await categoryService.update(categoryToEdit.id, {
-        name: newCategoryName.trim(),
-        type: newCategoryType
-      });
+      await categoryService.update(
+        typeof categoryToEdit.id === 'string' ? parseInt(categoryToEdit.id, 10) : categoryToEdit.id, 
+        {
+          name: newCategoryName.trim(),
+          type: newCategoryType
+        }
+      );
       
       // Refresh categories
       fetchCategories();
@@ -587,7 +590,9 @@ const Transactions: React.FC = () => {
     if (!categoryToDelete) return;
     
     try {
-      await categoryService.delete(categoryToDelete.id);
+      await categoryService.delete(
+        typeof categoryToDelete.id === 'string' ? parseInt(categoryToDelete.id, 10) : categoryToDelete.id
+      );
       
       // Refresh categories
       fetchCategories();
@@ -607,7 +612,9 @@ const Transactions: React.FC = () => {
   };
 
   const handleStartInlineEdit = (category: Category) => {
-    setInlineEditCategoryId(category.id);
+    setInlineEditCategoryId(
+      typeof category.id === 'string' ? parseInt(category.id, 10) : category.id
+    );
     setInlineEditName(category.name);
     setInlineEditType(category.type as 'INCOME' | 'EXPENSE' | 'SAVING' | 'INVESTMENT');
   };
@@ -654,7 +661,7 @@ const Transactions: React.FC = () => {
     
     return categories.filter(category => 
       category.name.toLowerCase().includes(categoryFilter.toLowerCase()) ||
-      category.type.toLowerCase().includes(categoryFilter.toLowerCase())
+      (category.type && category.type.toLowerCase().includes(categoryFilter.toLowerCase()))
     );
   }, [categories, categoryFilter]);
 
@@ -802,6 +809,11 @@ const Transactions: React.FC = () => {
           onEdit={handleEdit}
           onDelete={handleDelete}
           onBatchUpdate={handleBatchUpdate}
+          page={page - 1}
+          totalCount={totalCount}
+          rowsPerPage={pageSize}
+          onPageChange={(_e, newPage) => handlePageChange(_e, newPage)}
+          onRowsPerPageChange={handlePageSizeChange}
         />
       )}
       
@@ -1065,8 +1077,8 @@ const Transactions: React.FC = () => {
                           </TextField>
                         ) : (
                           <Chip 
-                            label={category.type} 
-                            color={getCategoryChipColor(category.type)}
+                            label={category.type || 'EXPENSE'} 
+                            color={getCategoryChipColor(category.type || 'EXPENSE')}
                             size="small"
                           />
                         )}

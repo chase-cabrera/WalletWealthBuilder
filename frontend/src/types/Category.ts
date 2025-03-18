@@ -1,9 +1,11 @@
 export interface Category {
-  id: number;
+  id: string | number;
   name: string;
-  description: string;
-  isDefault: boolean;
-  type: 'INCOME' | 'EXPENSE' | 'INVESTMENT' | 'SAVING';
+  color?: string;
+  icon?: string;
+  type?: 'INCOME' | 'EXPENSE' | 'INVESTMENT' | 'SAVING';
+  description?: string;
+  isDefault?: boolean;
   createdAt: string;
   updatedAt: string;
 } 

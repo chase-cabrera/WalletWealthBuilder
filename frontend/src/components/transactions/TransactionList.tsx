@@ -46,6 +46,7 @@ import { Transaction, CategoryObject } from '../../types/Transaction';
 import { format, parseISO } from 'date-fns';
 import { Account } from '../../services/accountService';
 import { Transaction as TransactionService } from '../../services/transactionService';
+import TransactionTable from './TransactionTable';
 
 interface TransactionRowProps {
   transaction: Transaction;
@@ -70,6 +71,11 @@ interface TransactionListProps {
   onEdit: (data: Partial<Transaction>) => Promise<void>;
   onDelete: (id: number) => Promise<void>;
   onBatchUpdate?: (ids: number[], updates: Partial<Transaction>) => Promise<void>;
+  page?: number;
+  totalCount?: number;
+  rowsPerPage?: number;
+  onPageChange?: (event: unknown, newPage: number) => void;
+  onRowsPerPageChange?: (event: React.ChangeEvent<HTMLInputElement>) => void;
 }
 
 const CATEGORIES = [
@@ -208,7 +214,12 @@ const TransactionList: React.FC<TransactionListProps> = ({
   onSelectAll,
   onEdit,
   onDelete,
-  onBatchUpdate
+  onBatchUpdate,
+  page,
+  totalCount,
+  rowsPerPage,
+  onPageChange,
+  onRowsPerPageChange,
 }) => {
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
@@ -669,6 +680,24 @@ const TransactionList: React.FC<TransactionListProps> = ({
           </MenuItem>
         ))}
       </Menu>
+
+      {page !== undefined && totalCount !== undefined && (
+        <Box sx={{ mt: 2 }}>
+          <TablePagination
+            component="div"
+            count={totalCount}
+            page={page}
+            onPageChange={(event, newPage) => {
+              if (onPageChange) {
+                onPageChange(event, newPage);
+              }
+            }}
+            rowsPerPage={rowsPerPage || 10}
+            onRowsPerPageChange={onRowsPerPageChange}
+            rowsPerPageOptions={[10, 25, 50, 100]}
+          />
+        </Box>
+      )}
     </div>
   );
 };
